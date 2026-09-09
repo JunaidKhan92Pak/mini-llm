@@ -5,9 +5,9 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository is currently at **Phase 1: PyTorch sanity pipeline**. It proves that tensors,
-device selection, forward passes, loss calculation, backpropagation, and optimizer updates work
-before language-model components are introduced. It does not yet contain a tokenizer,
+This repository is currently at **Phase 2: tokenizer fundamentals**. It includes a deterministic
+educational character tokenizer with special tokens, exact known-text round trips, padding,
+serialization, and vocabulary-size validation. It does not yet contain a subword tokenizer,
 Transformer, language-data pipeline, or LLM training loop.
 
 ## Requirements
@@ -45,7 +45,7 @@ uv run python -m mini_llm.sanity
 
 ```text
 mini-llm/
-├── src/mini_llm/       # Package, configuration, runtime, and sanity pipeline
+├── src/mini_llm/       # Package, configuration, runtime, tokenizer, and sanity pipeline
 ├── tests/              # Automated tests
 ├── pyproject.toml      # Package metadata, dependencies, and tool configuration
 └── README.md
@@ -64,10 +64,10 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
 ## Roadmap
 
 1. **Phase 0 — Foundation (complete):** packaging, configuration, reproducibility, and tests.
-2. **Phase 1 — PyTorch sanity pipeline (current):** deterministic tensor, gradient, optimizer,
+2. **Phase 1 — PyTorch sanity pipeline (complete):** deterministic tensor, gradient, optimizer,
    and loss-decrease verification on the tiny relation `y = 2x + 1`.
-3. **Phase 2 — Tokenizer fundamentals:** deterministic encode/decode behavior and special-token
-   handling using a tiny local corpus.
+3. **Phase 2 — Tokenizer fundamentals (current):** deterministic encode/decode behavior,
+   special-token handling, padding, serialization, and model vocabulary synchronization.
 4. **Phase 3 — Transformer components:** causal attention, feed-forward layers, residual paths,
    and shape-focused tests.
 5. **Phase 4 — Debug model and language objective:** end-to-end logits, target shifting, loss,
@@ -85,6 +85,17 @@ working. Run it with:
 ```powershell
 uv run python -m mini_llm.sanity
 ```
+
+## Phase 2 educational tokenizer
+
+`CharacterTokenizer` assigns fixed IDs to `PAD`, `BOS`, `EOS`, and `UNK`, then assigns the
+remaining IDs to sorted characters observed in a supplied local corpus. Sorting makes vocabulary
+creation independent of corpus order. Known text decodes exactly, while unseen characters map to
+`UNK`. Tokenizer JSON files store a type and schema version so incompatible files fail clearly.
+
+This character tokenizer exists to make tokenization mechanics transparent. It is not intended
+for meaningful language-model training; a later phase will introduce a practical subword
+tokenizer after the surrounding model pipeline is correct.
 
 ## Reproducibility
 

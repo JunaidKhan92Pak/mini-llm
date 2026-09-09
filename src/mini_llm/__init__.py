@@ -6,8 +6,10 @@ from mini_llm.config import (
     SanityTrainingConfig,
     development_model_config,
 )
+from mini_llm.tokenizer import CharacterTokenizer
 
 __all__ = [
+    "CharacterTokenizer",
     "ModelConfig",
     "RuntimeConfig",
     "SanityTrainingConfig",

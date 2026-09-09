@@ -5,10 +5,10 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository is currently at **Phase 6: complete Transformer block**. The reusable block has
-been audited in isolation for pre-normalization, residual shape safety, causal behavior, MLP
-integration, configurable dropout, gradients, finite outputs, and CPU compatibility. No new full
-model, generation, dataset, or optimization feature is introduced in this phase.
+This repository is currently at **Phase 7: complete GPT-style Mini LLM**. `JeePeeTee` combines
+token and positional embeddings, configurable stacked causal Transformer blocks, final LayerNorm,
+and an untied vocabulary projection that returns raw logits. The model is validated for causality,
+deterministic evaluation, gradients, context limits, checkpoints, and CPU execution.
 
 ## Requirements
 
@@ -76,9 +76,11 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
    residual paths, stacked blocks, logits, target shifting, and overfit-one-batch verification.
 6. **Phase 5 — Baseline local training (complete):** leakage-aware token windows, deterministic
    batches, AdamW training, validation metrics, gradient clipping, and checkpoint resume.
-7. **Phase 6 — Complete Transformer block (current):** isolated pre-norm block verification,
+7. **Phase 6 — Complete Transformer block (complete):** isolated pre-norm block verification,
    explicit residual shape guards, causality, dropout behavior, and parameter accounting.
-8. **Later phases:** generation, curated data, pretraining, scaling,
+8. **Phase 7 — Complete GPT-style model (current):** configurable block stacking, final
+   normalization, raw vocabulary logits, model-level validation, and parameter accounting.
+9. **Later phases:** generation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
 
 ## Phase 1 sanity pipeline
@@ -153,6 +155,29 @@ Residual additions explicitly require identical tensor shapes; they never reshap
 broadcasting. For the development configuration (`D=64`, four heads, feed-forward width `256`),
 one block has 49,984 trainable parameters: 16,640 in attention projections, 33,088 in the MLP,
 and 256 in the two LayerNorm modules. Dropout contains no parameters.
+
+## Phase 7 complete JeePeeTee model
+
+The model's forward path is intentionally focused:
+
+```text
+token IDs [B, T]
+→ token + learned position embeddings [B, T, D]
+→ pre-norm causal Transformer block × N [B, T, D]
+→ final LayerNorm [B, T, D]
+→ linear LM head [B, T, V]
+```
+
+The forward method returns raw logits—never probabilities—because cross-entropy applies the
+required log-softmax. Dataset windows already provide `inputs = sequence[:-1]` and
+`targets = sequence[1:]`; the trainer must not shift them a second time.
+
+The embedding table and LM head are deliberately untied for this first baseline. Keeping their
+roles independent makes the implementation and parameter accounting clearer. For the development
+configuration with vocabulary `128`, context `64`, width `64`, two blocks, four heads, and MLP
+width `256`, JeePeeTee has 120,576 trainable parameters: 12,288 embeddings, 99,968 Transformer
+blocks, 128 final normalization, and 8,192 LM head. PyTorch's well-tested default initialization is
+retained; specialized GPT initialization is deferred until scaling evidence justifies it.
 
 ## Reproducibility
 

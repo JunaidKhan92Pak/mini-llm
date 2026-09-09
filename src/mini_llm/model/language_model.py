@@ -87,12 +87,64 @@ class JeePeeTee(nn.Module):
         )
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
+        self._validate_token_ids(token_ids)
         hidden = self.embeddings(token_ids)
         for block in self.blocks:
             hidden = block(hidden)
         return self.language_model_head(self.final_norm(hidden))
 
-    def parameter_count(self) -> int:
-        """Return the number of trainable scalar parameters."""
+    def _validate_token_ids(self, token_ids: torch.Tensor) -> None:
+        if token_ids.ndim != 2:
+            raise ValueError(
+                f"token_ids must have shape (batch, sequence), got {tuple(token_ids.shape)}"
+            )
+        if token_ids.dtype not in (torch.int32, torch.int64):
+            raise TypeError(f"token_ids must use an integer dtype, got {token_ids.dtype}")
+        if token_ids.shape[0] == 0:
+            raise ValueError("token_ids batch must not be empty")
+        if token_ids.shape[1] == 0:
+            raise ValueError("token_ids sequence must not be empty")
+        if token_ids.shape[1] > self.config.context_length:
+            raise ValueError(
+                f"sequence length {token_ids.shape[1]} exceeds context length "
+                f"{self.config.context_length}"
+            )
+        if token_ids.min() < 0 or token_ids.max() >= self.config.vocab_size:
+            raise ValueError(
+                f"token IDs must be within [0, {self.config.vocab_size - 1}]"
+            )
 
-        return sum(parameter.numel() for parameter in self.parameters() if parameter.requires_grad)
+    def parameter_breakdown(self) -> dict[str, int]:
+        """Return trainable parameter counts for the model's major components."""
+
+        modules = {
+            "embeddings": self.embeddings,
+            "transformer_blocks": self.blocks,
+            "final_normalization": self.final_norm,
+            "language_model_head": self.language_model_head,
+        }
+        return {
+            name: sum(
+                parameter.numel()
+                for parameter in module.parameters()
+                if parameter.requires_grad
+            )
+            for name, module in modules.items()
+        }
+
+    def parameter_counts(self) -> dict[str, int]:
+        """Return total and trainable scalar parameter counts."""
+
+        return {
+            "total": sum(parameter.numel() for parameter in self.parameters()),
+            "trainable": sum(
+                parameter.numel()
+                for parameter in self.parameters()
+                if parameter.requires_grad
+            ),
+        }
+
+    def parameter_count(self) -> int:
+        """Return the trainable count retained for backwards compatibility."""
+
+        return self.parameter_counts()["trainable"]

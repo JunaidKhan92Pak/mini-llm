@@ -1,5 +1,6 @@
 """JeePeeTee educational language model package."""
 
+from mini_llm.bpe_tokenizer import BPETokenizer
 from mini_llm.config import (
     DataConfig,
     DebugOverfitConfig,
@@ -13,6 +14,7 @@ from mini_llm.model import JeePeeTee
 from mini_llm.tokenizer import CharacterTokenizer
 
 __all__ = [
+    "BPETokenizer",
     "CharacterTokenizer",
     "DataConfig",
     "DebugOverfitConfig",

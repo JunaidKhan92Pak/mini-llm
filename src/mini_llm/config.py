@@ -71,6 +71,25 @@ class SanityTrainingConfig:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class DebugOverfitConfig:
+    """Settings for the one-batch language-model overfit gate."""
+
+    steps: int = 100
+    learning_rate: float = 0.02
+    weight_decay: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.steps <= 0:
+            raise ValueError(f"steps must be positive, got {self.steps}")
+        if self.learning_rate <= 0.0:
+            raise ValueError(
+                f"learning_rate must be positive, got {self.learning_rate}"
+            )
+        if self.weight_decay < 0.0:
+            raise ValueError(f"weight_decay must be non-negative, got {self.weight_decay}")
+
+
 def development_model_config(vocab_size: int) -> ModelConfig:
     """Return the deliberately small CPU-friendly configuration for early validation."""
 

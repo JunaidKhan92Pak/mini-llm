@@ -5,10 +5,10 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository is currently at **Phase 3: embeddings and causal attention**. It includes learned
-token/position embeddings, an explicit causal mask, scaled dot-product attention, and multi-head
-self-attention. It does not yet contain a complete Transformer block, decoder model, language-data
-pipeline, or LLM training loop.
+This repository is currently at **Phase 4: debug decoder and language objective**. JeePeeTee now
+has pre-normalized Transformer blocks, feed-forward networks, residual paths, stacked blocks, final
+vocabulary logits, explicit next-token shifting, and a deterministic one-batch overfit gate. It
+does not yet contain a production training loop, generation, checkpoints, or real language data.
 
 ## Requirements
 
@@ -46,7 +46,7 @@ uv run python -m mini_llm.sanity
 ```text
 mini-llm/
 ├── src/mini_llm/       # Package, runtime, tokenizer, and sanity pipeline
-│   └── model/          # Embedding and attention components
+│   └── model/          # Embeddings, attention, Transformer blocks, and decoder
 ├── tests/              # Automated tests
 ├── pyproject.toml      # Package metadata, dependencies, and tool configuration
 └── README.md
@@ -69,9 +69,9 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
    and loss-decrease verification on the tiny relation `y = 2x + 1`.
 3. **Phase 2 — Tokenizer fundamentals (complete):** deterministic encode/decode behavior,
    special-token handling, padding, serialization, and model vocabulary synchronization.
-4. **Phase 3 — Embeddings and causal attention (current):** learned token/position embeddings,
+4. **Phase 3 — Embeddings and causal attention (complete):** learned token/position embeddings,
    explicit causal masking, scaled dot-product attention, and multi-head self-attention.
-5. **Phase 4 — Debug decoder model and language objective:** normalization, feed-forward layers,
+5. **Phase 4 — Debug decoder model and language objective (current):** normalization, feed-forward layers,
    residual paths, stacked blocks, logits, target shifting, and overfit-one-batch verification.
 6. **Later phases:** checkpointing, generation, evaluation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
@@ -108,6 +108,19 @@ does not know token order.
 causal mask prevents every token from reading future positions. `MultiHeadSelfAttention` projects
 Q, K, and V directly with PyTorch linear layers, splits them into configured heads, applies causal
 attention, and merges the heads back to the original embedding shape.
+
+## Phase 4 debug decoder
+
+Each `TransformerBlock` uses pre-normalization and two residual paths: one around causal attention
+and one around a GELU feed-forward network. `JeePeeTee` stacks the configured number of blocks,
+applies a final normalization, and projects every position to raw vocabulary logits shaped
+`(batch, sequence, vocab_size)`.
+
+`prepare_next_token_batch` makes the causal objective explicit by shifting each sequence into
+inputs `tokens[:, :-1]` and targets `tokens[:, 1:]`. `causal_language_model_loss` applies
+cross-entropy to those aligned logits and targets and supports an ignored target index for future
+padding-aware batches. The debug trainer repeatedly fits one synthetic token batch; this is a
+correctness gate, not a general-purpose training system.
 
 ## Reproducibility
 

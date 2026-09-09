@@ -31,6 +31,8 @@ class TokenPositionEmbedding(nn.Module):
             raise TypeError(f"token_ids must use an integer dtype, got {token_ids.dtype}")
 
         sequence_length = token_ids.shape[1]
+        if sequence_length == 0:
+            raise ValueError("token_ids sequence must not be empty")
         if sequence_length > self.context_length:
             raise ValueError(
                 f"sequence length {sequence_length} exceeds context length {self.context_length}"

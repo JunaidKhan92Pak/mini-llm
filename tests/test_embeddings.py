@@ -60,5 +60,7 @@ def test_embedding_rejects_invalid_shape_dtype_and_context(model_config: ModelCo
         module(torch.ones(3, dtype=torch.long))
     with pytest.raises(TypeError, match="integer dtype"):
         module(torch.ones((1, 3), dtype=torch.float32))
+    with pytest.raises(ValueError, match="must not be empty"):
+        module(torch.empty((1, 0), dtype=torch.long))
     with pytest.raises(ValueError, match="exceeds context length"):
         module(torch.ones((1, model_config.context_length + 1), dtype=torch.long))

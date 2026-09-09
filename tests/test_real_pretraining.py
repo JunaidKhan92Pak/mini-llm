@@ -27,8 +27,8 @@ def _artifacts(tmp_path: Path) -> tuple[BPETokenizer, Path, torch.Tensor]:
     return tokenizer, tokenizer_path, torch.tensor(values).view(8, 9)
 
 
-def _model(vocab_size: int) -> JeePeeTee:
-    return JeePeeTee(ModelConfig(vocab_size, 8, 16, 1, 4, 32, 0.1))
+def _model(vocab_size: int, *, context_length: int = 8) -> JeePeeTee:
+    return JeePeeTee(ModelConfig(vocab_size, context_length, 16, 1, 4, 32, 0.1))
 
 
 def _run_config() -> PretrainingRunConfig:
@@ -127,3 +127,31 @@ def test_resume_rejects_changed_tokenizer(tmp_path: Path) -> None:
             tokenizer_path=tokenizer_path, dataset_metadata={},
             resume_from=first.checkpoints[-1], prompts=(),
         )
+
+
+def test_trainer_accepts_dataset_context_shorter_than_model_maximum(
+    tmp_path: Path,
+) -> None:
+    tokenizer, tokenizer_path, sequences = _artifacts(tmp_path)
+    config = PretrainingRunConfig(
+        batch_size=2,
+        max_steps=1,
+        warmup_steps=0,
+        evaluation_interval=1,
+        evaluation_batches=1,
+        checkpoint_interval=1,
+        generation_interval=1,
+    )
+    result = train_phase12(
+        _model(tokenizer.vocab_size, context_length=16),
+        tokenizer,
+        sequences,
+        sequences[:4],
+        config,
+        RuntimeConfig(14, "cpu"),
+        output_dir=tmp_path / "run",
+        tokenizer_path=tokenizer_path,
+        dataset_metadata={},
+        prompts=(),
+    )
+    assert result.global_step == 1

@@ -313,3 +313,25 @@ code, while code contributed about 76% of tokens and HTML/CSS alone contributed 
 only about 0.035% of training tokens. The 153,600-token run also covered only about 20% of the
 769,275 packed training tokens. Before increasing parameter count, rebalance at the token level,
 add more useful document boundaries, and train this same model for at least one controlled pass.
+
+## Phase 14 five-million-parameter preset
+
+The existing decoder-only architecture now has three centralized presets at vocabulary size 2,048:
+
+- debug: 366,336 parameters (`D=64`, 2 blocks, 4 heads, FFN 256, context 64);
+- mini: 846,912 parameters (`D=96`, 4 blocks, 4 heads, FFN 384, context 64);
+- five-million: 5,030,656 parameters (`D=256`, 5 blocks, 8 heads, FFN 1,024,
+  context 128, dropout 0.1).
+
+The 5M preset uses a hardware-friendly head dimension of 32 and changes no model behavior. FP32
+weights occupy about 19.2 MiB (FP16 about 9.6 MiB); FP32 weights, gradients, and AdamW states have a
+lower-bound footprint around 76.8 MiB before activations and temporary tensors. A T4-class 16 GB
+GPU should comfortably start at context 128 and batch size 32 in the current FP32 trainer, then tune
+upward from measured memory. CPU execution remains suitable for smoke tests but not efficient full
+pretraining.
+
+The real Phase 11 data smoke used batch size 2 for three optimizer steps. Train loss moved from
+`7.8384` to `7.8290`, validation loss from `7.7851` to `7.7783`, and checkpoint round-trip remained
+valid. The trainer now correctly accepts data sequences shorter than a model's maximum context.
+This preset is technically ready, but Phase 13's token-mixture imbalance and undertraining findings
+still need correction before spending resources on a full 5M run.

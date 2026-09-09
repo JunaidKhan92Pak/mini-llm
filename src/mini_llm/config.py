@@ -140,12 +140,50 @@ class TrainingConfig:
 def development_model_config(vocab_size: int) -> ModelConfig:
     """Return the deliberately small CPU-friendly configuration for early validation."""
 
+    return debug_model_config(vocab_size)
+
+
+def debug_model_config(vocab_size: int, *, context_length: int = 64) -> ModelConfig:
+    """Return the smallest maintained architecture preset."""
+
     return ModelConfig(
         vocab_size=vocab_size,
-        context_length=64,
+        context_length=context_length,
         embedding_dim=64,
         num_layers=2,
         num_heads=4,
         feed_forward_dim=256,
         dropout=0.0,
+    )
+
+
+def mini_model_config(vocab_size: int, *, context_length: int = 64) -> ModelConfig:
+    """Return the Phase 12 architecture preset near one million parameters."""
+
+    return ModelConfig(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        embedding_dim=96,
+        num_layers=4,
+        num_heads=4,
+        feed_forward_dim=384,
+        dropout=0.1,
+    )
+
+
+def five_million_model_config(
+    vocab_size: int,
+    *,
+    context_length: int = 128,
+) -> ModelConfig:
+    """Return the hardware-friendly Phase 14 preset near five million parameters."""
+
+    return ModelConfig(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        embedding_dim=256,
+        num_layers=5,
+        num_heads=8,
+        feed_forward_dim=1024,
+        dropout=0.1,
     )

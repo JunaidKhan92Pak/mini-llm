@@ -9,6 +9,7 @@ description = "JeePeeTee: an educational, from-scratch GPT-style language model 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "datasets>=4,<5",
     "numpy>=2,<3",
     "tokenizers>=0.22,<1",
     "torch>=2.5,<3",

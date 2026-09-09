@@ -5,7 +5,7 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository has completed **Phase 10: real BPE tokenizer integration**. `JeePeeTee` combines
+This repository has completed **Phase 11: real pretraining dataset pipeline**. `JeePeeTee` combines
 token and positional embeddings, configurable stacked causal Transformer blocks, final LayerNorm,
 and an untied vocabulary projection that returns raw logits. Unit tests validate each component,
 while a CPU integration test covers the complete text-to-loss-and-backward pipeline before real
@@ -49,14 +49,15 @@ uv run python -m mini_llm.sanity
 mini-llm/
 ├── src/mini_llm/       # Package, runtime, tokenizer, and sanity pipeline
 │   ├── model/          # Embeddings, attention, Transformer blocks, and decoder
+│   ├── pretraining/    # Public-source configs, cleaning, mixing, packing, and manifests
 │   └── training/       # Local windows, baseline trainer, metrics, and checkpoints
 ├── tests/              # Automated tests
 ├── pyproject.toml      # Package metadata, dependencies, and tool configuration
 └── README.md
 ```
 
-Directories for data, checkpoints, training, inference, and evaluation will be introduced only
-when their corresponding phases begin.
+Generated raw, cleaned, and tokenized datasets live under the configured `data/` location and are
+ignored by Git. Checkpoints and other generated training artifacts also remain local.
 
 ## Configuration approach
 
@@ -88,7 +89,10 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
     memorization, prediction inspection, finite-gradient checks, and checkpoint verification.
 11. **Phase 10 — Real BPE tokenizer integration (complete):** locally trained byte-level BPE,
     stable special tokens, deterministic save/load, Unicode coverage, and MiniGPT integration.
-12. **Later phases:** generation, curated data, pretraining, scaling,
+12. **Phase 11 — Real pretraining dataset pipeline (complete):** bounded public-data streaming,
+    schema inspection, cleaning, deduplication, weighted mixing, deterministic splitting, BPE
+    packing, reusable artifacts, and a MiniGPT smoke test.
+13. **Later phases:** generation, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
 
 ## Phase 1 sanity pipeline
@@ -220,6 +224,37 @@ The special-token order is centralized as `<pad>=0`, `<bos>=1`, `<eos>=2`, and `
 validated again when a saved tokenizer is loaded. The model configuration must use the
 tokenizer's reported `vocab_size`; `validate_vocab_size` fails clearly on a mismatch. The original
 character tokenizer remains available for small educational experiments.
+
+## Phase 11 pretraining data preparation
+
+The development source catalog combines English educational text from FineWeb-Edu and Cosmopedia
+v2 with Python, JavaScript, TypeScript, HTML, CSS, and SQL subsets from The Stack Smol XS. Every
+source has a configurable cap and mixture weight. Loading uses Hugging Face Datasets streaming so
+raising those limits does not require loading a complete upstream dataset first.
+
+FineWeb-Edu and the SmolLM corpus declare ODC-By-1.0; FineWeb-Edu is additionally subject to
+Common Crawl terms. The Stack contains files governed by their original repository licenses. The
+Smol XS rows do not expose per-file license metadata, so those code sources are explicitly marked
+`review_required` in generated manifests and require a provenance/license review before production
+training or redistribution.
+
+Preparation writes separate `raw/`, `cleaned/`, and `tokenized/` directories plus `metadata.json`.
+The manifest records source URLs, subsets, splits, licensing notes, observed schemas, raw/cleaned/
+selected counts, approximate BPE token counts, preprocessing settings, and final sequence counts.
+Documents are split before token packing; fixed rows contain `context_length + 1` IDs so the dataset
+returns inputs and next-token targets shifted exactly once.
+
+Manually downloaded JSONL files can be prepared reproducibly without contacting the Hub again:
+
+```powershell
+uv run python -m mini_llm.pretraining.local_prepare data/raw/manual `
+  data/processed/phase11-development --vocab-size 2048 --context-length 64
+```
+
+The first local development corpus contained 350 raw documents. Cleaning removed one exact
+duplicate, weighted mixing selected 300 documents, and the resulting 2,048-token BPE vocabulary
+encoded approximately 829,458 tokens. The deterministic 90/10 document split produced 11,835
+training and 925 validation sequences. These generated data artifacts remain git-ignored.
 
 ## Reproducibility
 

@@ -12,7 +12,7 @@ from typing import Any
 import torch
 
 from mini_llm.bpe_tokenizer import BPETokenizer
-from mini_llm.config import ModelConfig, RuntimeConfig
+from mini_llm.config import ModelConfig, RuntimeConfig, mini_model_config
 from mini_llm.generation import GenerationConfig, generate
 from mini_llm.model import JeePeeTee, causal_language_model_loss
 from mini_llm.pretraining.pipeline import FixedTokenSequenceDataset
@@ -97,15 +97,7 @@ class PretrainingResult:
 def phase12_model_config(vocab_size: int, *, context_length: int = 64) -> ModelConfig:
     """Return the first real-training architecture (under one million parameters)."""
 
-    return ModelConfig(
-        vocab_size=vocab_size,
-        context_length=context_length,
-        embedding_dim=96,
-        num_layers=4,
-        num_heads=4,
-        feed_forward_dim=384,
-        dropout=0.1,
-    )
+    return mini_model_config(vocab_size, context_length=context_length)
 
 
 def _schedule_multiplier(step: int, config: PretrainingRunConfig) -> float:
@@ -305,7 +297,15 @@ def train_phase12(
     model.to(device)
     tokenizer.validate_vocab_size(model.config.vocab_size)
     for sequences in (train_sequences, validation_sequences):
-        FixedTokenSequenceDataset(sequences, context_length=model.config.context_length)
+        if sequences.ndim != 2 or sequences.shape[1] < 2:
+            raise ValueError("dataset sequences must have shape [N, T + 1]")
+        dataset_context_length = sequences.shape[1] - 1
+        if dataset_context_length > model.config.context_length:
+            raise ValueError(
+                f"dataset context length {dataset_context_length} exceeds model maximum "
+                f"{model.config.context_length}"
+            )
+        FixedTokenSequenceDataset(sequences, context_length=dataset_context_length)
         if sequences.min() < 0 or sequences.max() >= tokenizer.vocab_size:
             raise ValueError("dataset contains token IDs outside the tokenizer vocabulary")
 

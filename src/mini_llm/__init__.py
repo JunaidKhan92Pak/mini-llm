@@ -8,7 +8,10 @@ from mini_llm.config import (
     RuntimeConfig,
     SanityTrainingConfig,
     TrainingConfig,
+    debug_model_config,
     development_model_config,
+    five_million_model_config,
+    mini_model_config,
 )
 from mini_llm.generation import GenerationConfig, GenerationResult, generate
 from mini_llm.model import JeePeeTee
@@ -26,8 +29,11 @@ __all__ = [
     "RuntimeConfig",
     "SanityTrainingConfig",
     "TrainingConfig",
+    "debug_model_config",
     "development_model_config",
+    "five_million_model_config",
     "generate",
+    "mini_model_config",
 ]
 __project_name__ = "JeePeeTee"
 __version__ = "0.1.0"

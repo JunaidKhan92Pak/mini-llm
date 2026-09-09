@@ -5,10 +5,10 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository is currently at **Phase 2: tokenizer fundamentals**. It includes a deterministic
-educational character tokenizer with special tokens, exact known-text round trips, padding,
-serialization, and vocabulary-size validation. It does not yet contain a subword tokenizer,
-Transformer, language-data pipeline, or LLM training loop.
+This repository is currently at **Phase 3: embeddings and causal attention**. It includes learned
+token/position embeddings, an explicit causal mask, scaled dot-product attention, and multi-head
+self-attention. It does not yet contain a complete Transformer block, decoder model, language-data
+pipeline, or LLM training loop.
 
 ## Requirements
 
@@ -45,7 +45,8 @@ uv run python -m mini_llm.sanity
 
 ```text
 mini-llm/
-├── src/mini_llm/       # Package, configuration, runtime, tokenizer, and sanity pipeline
+├── src/mini_llm/       # Package, runtime, tokenizer, and sanity pipeline
+│   └── model/          # Embedding and attention components
 ├── tests/              # Automated tests
 ├── pyproject.toml      # Package metadata, dependencies, and tool configuration
 └── README.md
@@ -66,12 +67,12 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
 1. **Phase 0 — Foundation (complete):** packaging, configuration, reproducibility, and tests.
 2. **Phase 1 — PyTorch sanity pipeline (complete):** deterministic tensor, gradient, optimizer,
    and loss-decrease verification on the tiny relation `y = 2x + 1`.
-3. **Phase 2 — Tokenizer fundamentals (current):** deterministic encode/decode behavior,
+3. **Phase 2 — Tokenizer fundamentals (complete):** deterministic encode/decode behavior,
    special-token handling, padding, serialization, and model vocabulary synchronization.
-4. **Phase 3 — Transformer components:** causal attention, feed-forward layers, residual paths,
-   and shape-focused tests.
-5. **Phase 4 — Debug model and language objective:** end-to-end logits, target shifting, loss,
-   backward-pass, and overfit-one-batch verification.
+4. **Phase 3 — Embeddings and causal attention (current):** learned token/position embeddings,
+   explicit causal masking, scaled dot-product attention, and multi-head self-attention.
+5. **Phase 4 — Debug decoder model and language objective:** normalization, feed-forward layers,
+   residual paths, stacked blocks, logits, target shifting, and overfit-one-batch verification.
 6. **Later phases:** checkpointing, generation, evaluation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
 
@@ -96,6 +97,17 @@ creation independent of corpus order. Known text decodes exactly, while unseen c
 This character tokenizer exists to make tokenization mechanics transparent. It is not intended
 for meaningful language-model training; a later phase will introduce a practical subword
 tokenizer after the surrounding model pipeline is correct.
+
+## Phase 3 embeddings and attention
+
+`TokenPositionEmbedding` converts integer token IDs shaped `(batch, sequence)` into vectors shaped
+`(batch, sequence, embedding_dim)`. Learned position vectors are added because self-attention alone
+does not know token order.
+
+`scaled_dot_product_attention` computes `softmax(QKᵀ / sqrt(head_dim))V`. Its lower-triangular
+causal mask prevents every token from reading future positions. `MultiHeadSelfAttention` projects
+Q, K, and V directly with PyTorch linear layers, splits them into configured heads, applies causal
+attention, and merges the heads back to the original embedding shape.
 
 ## Reproducibility
 

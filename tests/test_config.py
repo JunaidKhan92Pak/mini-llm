@@ -1,6 +1,7 @@
 import pytest
 
 from mini_llm.config import (
+    DebugOverfitConfig,
     ModelConfig,
     RuntimeConfig,
     SanityTrainingConfig,
@@ -80,3 +81,12 @@ def test_sanity_training_config_rejects_invalid_values() -> None:
         SanityTrainingConfig(steps=0)
     with pytest.raises(ValueError, match="learning_rate"):
         SanityTrainingConfig(learning_rate=0.0)
+
+
+def test_debug_overfit_config_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="steps"):
+        DebugOverfitConfig(steps=0)
+    with pytest.raises(ValueError, match="learning_rate"):
+        DebugOverfitConfig(learning_rate=0.0)
+    with pytest.raises(ValueError, match="weight_decay"):
+        DebugOverfitConfig(weight_decay=-0.1)

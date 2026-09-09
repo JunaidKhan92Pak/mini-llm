@@ -1,15 +1,19 @@
 """JeePeeTee educational language model package."""
 
 from mini_llm.config import (
+    DebugOverfitConfig,
     ModelConfig,
     RuntimeConfig,
     SanityTrainingConfig,
     development_model_config,
 )
+from mini_llm.model import JeePeeTee
 from mini_llm.tokenizer import CharacterTokenizer
 
 __all__ = [
     "CharacterTokenizer",
+    "DebugOverfitConfig",
+    "JeePeeTee",
     "ModelConfig",
     "RuntimeConfig",
     "SanityTrainingConfig",

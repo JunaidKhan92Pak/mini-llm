@@ -261,3 +261,28 @@ training and 925 validation sequences. These generated data artifacts remain git
 Call `seed_everything` before experiments. It seeds Python and PyTorch, including all CUDA devices
 when available. Strict deterministic algorithms are opt-in because some operations or platforms
 do not support them and because they can reduce performance.
+
+## Phase 12 first real pretraining run
+
+The first bounded real-data experiment uses a 846,912-parameter JeePeeTee model: vocabulary
+`2,048`, context `64`, width `96`, four Transformer blocks, four attention heads, MLP width `384`,
+and dropout `0.1`. Batches are selected deterministically from the global step, so checkpoint
+resume continues with the same next batch rather than silently restarting a shuffled iterator.
+
+The trainer uses causal next-token cross-entropy with dataset rows shifted exactly once, AdamW,
+gradient clipping, 20 warmup steps, linear learning-rate decay, fixed-slice train/validation
+evaluation, controlled greedy samples, and JSONL metric logs. Phase 12 checkpoints contain model,
+optimizer, scheduler and RNG state; counters; model/run/runtime configuration; full tokenizer
+configuration and fingerprint; and the Phase 11 dataset manifest.
+
+```powershell
+python -m mini_llm.pretraining.run data/processed/phase11-development `
+  checkpoints/phase12-final --max-steps 300 --batch-size 8 `
+  --learning-rate 0.0003 --warmup-steps 20 --device cpu
+```
+
+The recorded CPU run processed 153,600 target tokens in 300 steps. Fixed-slice training loss fell
+from `7.7857` to `6.7870`; validation loss fell from `7.7953` to `6.7358` (perplexity `2429.19` to
+`842.05`). It was deliberately interrupted at step 100 and successfully resumed from the saved
+checkpoint. Greedy prompt completions remained dominated by punctuation, so this run proves stable
+real-data learning and integration—not useful text-generation quality or completed pretraining.

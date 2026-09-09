@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,7 @@ class PretrainingRunConfig:
     generation_interval: int = 100
     generation_max_new_tokens: int = 24
     gradient_clip_norm: float = 1.0
+    gradient_accumulation_steps: int = 1
 
     def __post_init__(self) -> None:
         positive = {
@@ -55,6 +57,7 @@ class PretrainingRunConfig:
             "generation_interval": self.generation_interval,
             "generation_max_new_tokens": self.generation_max_new_tokens,
             "gradient_clip_norm": self.gradient_clip_norm,
+            "gradient_accumulation_steps": self.gradient_accumulation_steps,
         }
         for name, value in positive.items():
             if value <= 0:
@@ -76,6 +79,7 @@ class PretrainingMetric:
     perplexity: float
     learning_rate: float
     gradient_norm: float | None
+    tokens_per_second: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +96,7 @@ class PretrainingResult:
     metrics: tuple[PretrainingMetric, ...]
     samples: tuple[GenerationSample, ...]
     checkpoints: tuple[Path, ...]
+    best_checkpoint: Path | None = None
 
 
 def phase12_model_config(vocab_size: int, *, context_length: int = 64) -> ModelConfig:
@@ -210,6 +215,13 @@ def save_phase12_checkpoint(
                 "objective": "causal_next_token_prediction",
                 "target_alignment": "inputs=row[:-1], targets=row[1:]",
                 "runtime_config": asdict(runtime_config),
+                "torch_version": str(torch.__version__),
+                "device_type": next(model.parameters()).device.type,
+                "cuda_device_name": (
+                    torch.cuda.get_device_name(next(model.parameters()).device)
+                    if next(model.parameters()).device.type == "cuda"
+                    else None
+                ),
             },
             "model_state": model.state_dict(),
             "optimizer_state": optimizer.state_dict(),
@@ -350,7 +362,11 @@ def train_phase12(
         "tokenizer_metadata": tokenizer_info,
         "dataset_metadata": dataset_metadata,
     }
-    if not manifest_path.exists():
+    if manifest_path.exists():
+        existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if existing_manifest != manifest:
+            raise ValueError("output directory belongs to an incompatible training run")
+    else:
         temporary_manifest = manifest_path.with_suffix(".json.tmp")
         temporary_manifest.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -360,8 +376,19 @@ def train_phase12(
     metrics: list[PretrainingMetric] = []
     samples: list[GenerationSample] = []
     checkpoints: list[Path] = []
+    best_checkpoint = output_dir / "best-validation.pt"
+    best_validation_loss = math.inf
+    if log_path.exists():
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            previous = json.loads(line)
+            if previous.get("event") == "metrics" and previous.get("global_step", 0) > 0:
+                best_validation_loss = min(
+                    best_validation_loss, float(previous["validation_loss"])
+                )
+    session_tokens = 0
+    training_elapsed_seconds = 0.0
 
-    def record_metrics(gradient_norm: float | None) -> None:
+    def record_metrics(gradient_norm: float | None) -> PretrainingMetric:
         train_loss = evaluate_sequences(
             model, train_sequences, batch_size=run_config.batch_size,
             max_batches=run_config.evaluation_batches, device=device,
@@ -378,9 +405,13 @@ def train_phase12(
             perplexity=math.exp(validation_loss),
             learning_rate=optimizer.param_groups[0]["lr"],
             gradient_norm=gradient_norm,
+            tokens_per_second=(
+                session_tokens / max(training_elapsed_seconds, 1e-9)
+            ),
         )
         metrics.append(metric)
         _append_jsonl(log_path, {"event": "metrics", **asdict(metric)})
+        return metric
 
     def record_samples() -> None:
         for prompt in prompts:
@@ -401,19 +432,26 @@ def train_phase12(
 
     latest_gradient_norm: float | None = None
     while global_step < limit:
-        inputs, targets = _step_batch(
-            train_sequences,
-            step=global_step,
-            batch_size=run_config.batch_size,
-            seed=runtime_config.seed,
-        )
-        inputs, targets = inputs.to(device), targets.to(device)
+        step_started = time.perf_counter()
         model.train()
         optimizer.zero_grad(set_to_none=True)
-        loss = causal_language_model_loss(model(inputs), targets)
-        if not torch.isfinite(loss):
-            raise FloatingPointError(f"non-finite training loss at step {global_step}")
-        loss.backward()
+        accumulated_tokens = 0
+        for accumulation_step in range(run_config.gradient_accumulation_steps):
+            batch_step = (
+                global_step * run_config.gradient_accumulation_steps + accumulation_step
+            )
+            inputs, targets = _step_batch(
+                train_sequences,
+                step=batch_step,
+                batch_size=run_config.batch_size,
+                seed=runtime_config.seed,
+            )
+            inputs, targets = inputs.to(device), targets.to(device)
+            loss = causal_language_model_loss(model(inputs), targets)
+            if not torch.isfinite(loss):
+                raise FloatingPointError(f"non-finite training loss at step {global_step}")
+            (loss / run_config.gradient_accumulation_steps).backward()
+            accumulated_tokens += targets.numel()
         if any(
             parameter.grad is not None and not torch.isfinite(parameter.grad).all()
             for parameter in model.parameters()
@@ -428,10 +466,26 @@ def train_phase12(
         optimizer.step()
         scheduler.step()
         global_step += 1
-        tokens_processed += targets.numel()
+        tokens_processed += accumulated_tokens
+        session_tokens += accumulated_tokens
+        training_elapsed_seconds += time.perf_counter() - step_started
 
         if global_step % run_config.evaluation_interval == 0 or global_step == limit:
-            record_metrics(latest_gradient_norm)
+            metric = record_metrics(latest_gradient_norm)
+            if metric.validation_loss < best_validation_loss:
+                best_validation_loss = metric.validation_loss
+                save_phase12_checkpoint(
+                    best_checkpoint,
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    global_step=global_step,
+                    tokens_processed=tokens_processed,
+                    run_config=run_config,
+                    runtime_config=runtime_config,
+                    tokenizer_metadata=tokenizer_info,
+                    dataset_metadata=dataset_metadata,
+                )
         if global_step % run_config.generation_interval == 0 or global_step == limit:
             record_samples()
         if (
@@ -459,4 +513,5 @@ def train_phase12(
         metrics=tuple(metrics),
         samples=tuple(samples),
         checkpoints=tuple(checkpoints),
+        best_checkpoint=best_checkpoint if best_checkpoint.exists() else None,
     )

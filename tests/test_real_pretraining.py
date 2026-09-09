@@ -73,6 +73,8 @@ def test_training_updates_parameters_logs_and_saves_complete_checkpoint(
     assert payload["tokenizer_metadata"]["config"]["type"] == "byte-level-bpe"
     assert payload["training_metadata"]["runtime_config"]["seed"] == 11
     assert payload["training_metadata"]["optimizer"] == "AdamW"
+    assert payload["training_metadata"]["device_type"] == "cpu"
+    assert payload["training_metadata"]["torch_version"] == str(torch.__version__)
     assert payload["dataset_metadata"] == {"name": "test"}
     assert (tmp_path / "run" / "run-manifest.json").is_file()
 
@@ -155,3 +157,48 @@ def test_trainer_accepts_dataset_context_shorter_than_model_maximum(
         prompts=(),
     )
     assert result.global_step == 1
+
+
+def test_gradient_accumulation_tracks_tokens_and_saves_best_checkpoint(
+    tmp_path: Path,
+) -> None:
+    tokenizer, tokenizer_path, sequences = _artifacts(tmp_path)
+    config = PretrainingRunConfig(
+        batch_size=2,
+        gradient_accumulation_steps=2,
+        max_steps=2,
+        warmup_steps=1,
+        evaluation_interval=1,
+        evaluation_batches=1,
+        checkpoint_interval=2,
+        generation_interval=2,
+    )
+    result = train_phase12(
+        _model(tokenizer.vocab_size), tokenizer, sequences, sequences[:4], config,
+        RuntimeConfig(31, "cpu"), output_dir=tmp_path / "run",
+        tokenizer_path=tokenizer_path, dataset_metadata={"name": "accumulation"}, prompts=(),
+    )
+
+    assert result.tokens_processed == 2 * 2 * 2 * 8
+    assert result.best_checkpoint == tmp_path / "run" / "best-validation.pt"
+    assert result.best_checkpoint.is_file()
+    assert all(metric.tokens_per_second > 0 for metric in result.metrics[1:])
+    payload = torch.load(result.best_checkpoint, weights_only=True)
+    assert payload["run_config"]["gradient_accumulation_steps"] == 2
+
+
+def test_existing_output_directory_rejects_an_incompatible_run(tmp_path: Path) -> None:
+    tokenizer, tokenizer_path, sequences = _artifacts(tmp_path)
+    output_dir = tmp_path / "run"
+    train_phase12(
+        _model(tokenizer.vocab_size), tokenizer, sequences, sequences[:4], _run_config(),
+        RuntimeConfig(41, "cpu"), output_dir=output_dir, tokenizer_path=tokenizer_path,
+        dataset_metadata={"name": "first"}, stop_after_step=1, prompts=(),
+    )
+
+    with pytest.raises(ValueError, match="incompatible training run"):
+        train_phase12(
+            _model(tokenizer.vocab_size), tokenizer, sequences, sequences[:4], _run_config(),
+            RuntimeConfig(41, "cpu"), output_dir=output_dir, tokenizer_path=tokenizer_path,
+            dataset_metadata={"name": "different"}, stop_after_step=1, prompts=(),
+        )

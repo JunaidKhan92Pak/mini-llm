@@ -10,6 +10,7 @@ from mini_llm.config import (
     TrainingConfig,
     development_model_config,
 )
+from mini_llm.generation import GenerationConfig, GenerationResult, generate
 from mini_llm.model import JeePeeTee
 from mini_llm.tokenizer import CharacterTokenizer
 
@@ -18,12 +19,15 @@ __all__ = [
     "CharacterTokenizer",
     "DataConfig",
     "DebugOverfitConfig",
+    "GenerationConfig",
+    "GenerationResult",
     "JeePeeTee",
     "ModelConfig",
     "RuntimeConfig",
     "SanityTrainingConfig",
     "TrainingConfig",
     "development_model_config",
+    "generate",
 ]
 __project_name__ = "JeePeeTee"
 __version__ = "0.1.0"

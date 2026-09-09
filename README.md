@@ -286,3 +286,30 @@ from `7.7857` to `6.7870`; validation loss fell from `7.7953` to `6.7358` (perpl
 `842.05`). It was deliberately interrupted at step 100 and successfully resumed from the saved
 checkpoint. Greedy prompt completions remained dominated by punctuation, so this run proves stable
 real-data learning and integration—not useful text-generation quality or completed pretraining.
+
+## Phase 13 pretrained-model evaluation
+
+Generation now lives outside the model architecture and supports greedy decoding or fixed-seed
+sampling with temperature, top-k, top-p, repetition penalty, EOS stopping, maximum-token limits,
+control-token suppression, and rolling context cropping. The evaluation suite keeps seven prompts
+fixed across runs: English completion, general knowledge, computer science, Python, JavaScript,
+code completion, and a short technical explanation.
+
+```powershell
+python -m mini_llm.evaluation checkpoints/phase12-final/checkpoint-step-000300.pt `
+  data/processed/phase11-development/tokenizer.json `
+  checkpoints/phase13-evaluation/report.json --device cpu
+```
+
+The step-300 checkpoint had the best logged validation loss, narrowly beating step 200 (`6.7358`
+versus `6.7383`). All evaluated logits were finite and modest (`-4.19` to `3.86`), but greedy output
+collapsed mainly to periods and no prompt generated EOS. Controlled sampling increased token
+diversity but remained incoherent and heavily code/markup-like.
+
+This is underfitting, not memorization or train/validation overfitting: both losses remain high and
+their final fixed-slice gap is about `-0.051`. The tokenizer produced zero UNK tokens in the packed
+training split. The more important data issue is length imbalance: document weights requested 50%
+code, while code contributed about 76% of tokens and HTML/CSS alone contributed about 42%. EOS was
+only about 0.035% of training tokens. The 153,600-token run also covered only about 20% of the
+769,275 packed training tokens. Before increasing parameter count, rebalance at the token level,
+add more useful document boundaries, and train this same model for at least one controlled pass.

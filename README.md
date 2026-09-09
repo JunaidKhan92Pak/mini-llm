@@ -375,3 +375,38 @@ sequences) and 786 validation documents (2,983 sequences), with zero document-ha
 The processed directory is self-contained with its tokenizer, metadata manifest, cleaned JSONL,
 and cached train/validation tensors. TypeScript, HTML, CSS, SQL, and dedicated Git coverage remain
 deferred limitations rather than implied capabilities.
+
+## Phase 16 five-million-parameter pretraining
+
+The pretraining runner supports the 5,030,656-parameter preset, fixed-seed deterministic batch
+selection, gradient accumulation, AdamW, warmup plus linear decay, finite loss/gradient guards,
+gradient clipping, validation perplexity, measured training throughput, periodic full-state
+checkpoints, and a separate best-validation checkpoint. It records the seven fixed Phase 13 prompts
+at generation intervals and stores model, optimizer, scheduler, RNG, tokenizer, dataset, and counter
+state for exact resume.
+
+```powershell
+python -m mini_llm.pretraining.run data/processed/phase15-balanced `
+  checkpoints/phase16-5m --model-preset five-million --device auto `
+  --max-steps 4752 --batch-size 8 --gradient-accumulation-steps 4 `
+  --learning-rate 0.0003 --warmup-steps 200 --evaluation-interval 200 `
+  --checkpoint-interval 400 --generation-interval 400
+```
+
+That configuration has an effective batch size of 32 sequences and processes 16,384 target tokens
+per optimizer step. On a CPU-only installation, use short runs only; full-corpus training should be
+run with a CUDA-enabled PyTorch environment on a T4-class GPU or better.
+
+The recorded local CPU experiment used batch size 16 without accumulation for 500 optimizer steps,
+intentionally stopping at step 250 and resuming from its full-state checkpoint. It processed
+1,024,000 target tokens (about 5.3% of the packed training split). Fixed-slice training loss fell
+from `7.7996` to `5.3982`; validation loss fell from `7.8036` to `5.5184`, with final perplexity
+`249.23`. The final train/validation gap was `0.1202`; finite gradient norms remained around
+`0.50`-`0.58`, so there was no instability or severe overfitting. Throughput was roughly
+1,157-1,910 target tokens/second depending on the segment.
+
+Generation improved from random byte/subword fragments to recognizable sentence and code shapes,
+but greedy output still repeats common phrases/newlines and does not answer factual or programming
+prompts correctly. This is expected underfitting after only about one million tokens. The checkpoint
+is technically sound and resumable, but this bounded CPU run is not a completed 20M-token
+pretraining pass and should not be described as a useful question-answering model yet.

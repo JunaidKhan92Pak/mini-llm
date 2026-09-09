@@ -5,10 +5,10 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository is currently at **Phase 5: baseline local training**. It adds leakage-aware local
-token windows, deterministic mini-batches, a single-device AdamW trainer, train/validation metrics,
-gradient clipping, token/step counters, and versioned checkpoint save/load/resume. It does not yet
-contain generation, dataset downloading, a subword tokenizer, scheduling, or GPU optimization.
+This repository is currently at **Phase 6: complete Transformer block**. The reusable block has
+been audited in isolation for pre-normalization, residual shape safety, causal behavior, MLP
+integration, configurable dropout, gradients, finite outputs, and CPU compatibility. No new full
+model, generation, dataset, or optimization feature is introduced in this phase.
 
 ## Requirements
 
@@ -74,9 +74,11 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
    explicit causal masking, scaled dot-product attention, and multi-head self-attention.
 5. **Phase 4 — Debug decoder model and language objective (complete):** normalization, feed-forward layers,
    residual paths, stacked blocks, logits, target shifting, and overfit-one-batch verification.
-6. **Phase 5 — Baseline local training (current):** leakage-aware token windows, deterministic
+6. **Phase 5 — Baseline local training (complete):** leakage-aware token windows, deterministic
    batches, AdamW training, validation metrics, gradient clipping, and checkpoint resume.
-7. **Later phases:** generation, curated data, pretraining, scaling,
+7. **Phase 6 — Complete Transformer block (current):** isolated pre-norm block verification,
+   explicit residual shape guards, causality, dropout behavior, and parameter accounting.
+8. **Later phases:** generation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
 
 ## Phase 1 sanity pipeline
@@ -137,6 +139,20 @@ tokens processed, evaluates periodically, and optionally clips gradients. Versio
 contain model configuration, model weights, optimizer state, training arguments, counters, and
 PyTorch RNG state. Loading rejects incompatible model configurations rather than silently applying
 weights to the wrong architecture.
+
+## Phase 6 complete Transformer block
+
+The reusable block preserves `[B, T, D]` through two pre-normalized residual sublayers:
+
+```text
+x = x + CausalMultiHeadAttention(LayerNorm(x))
+x = x + FeedForward(LayerNorm(x))
+```
+
+Residual additions explicitly require identical tensor shapes; they never reshape or rely on
+broadcasting. For the development configuration (`D=64`, four heads, feed-forward width `256`),
+one block has 49,984 trainable parameters: 16,640 in attention projections, 33,088 in the MLP,
+and 256 in the two LayerNorm modules. Dropout contains no parameters.
 
 ## Reproducibility
 

@@ -5,7 +5,7 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository has completed **Phase 8: complete model validation and testing**. `JeePeeTee` combines
+This repository has completed **Phase 9: tiny overfit / sanity training**. `JeePeeTee` combines
 token and positional embeddings, configurable stacked causal Transformer blocks, final LayerNorm,
 and an untied vocabulary projection that returns raw logits. Unit tests validate each component,
 while a CPU integration test covers the complete text-to-loss-and-backward pipeline before real
@@ -83,7 +83,9 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
    normalization, raw vocabulary logits, model-level validation, and parameter accounting.
 9. **Phase 8 — Complete model validation and testing (complete):** component-level regression
    tests plus a tokenizer-to-loss-and-backward integration smoke test.
-10. **Later phases:** generation, curated data, pretraining, scaling,
+10. **Phase 9 — Tiny overfit / sanity training (complete):** deterministic tiny-text
+    memorization, prediction inspection, finite-gradient checks, and checkpoint verification.
+11. **Later phases:** generation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
 
 ## Phase 1 sanity pipeline
@@ -188,6 +190,21 @@ The test suite checks both isolated behavior and cross-component contracts. The 
 gate encodes tiny text, creates exactly-once-shifted input and target windows through a DataLoader,
 runs JeePeeTee to obtain raw logits, computes cross-entropy, and performs backward propagation.
 It verifies finite outputs and gradients without running a real training job or optimizer loop.
+
+## Phase 9 tiny overfit gate
+
+The Phase 9 runner intentionally memorizes one small, repeated local string with the complete
+JeePeeTee architecture. It uses AdamW, gradient clipping, deterministic CPU execution, periodic
+loss and teacher-forced next-token accuracy logs, and optional checkpoint round-trip validation.
+The inspected prediction is computed on an existing training example; this is not yet
+autoregressive text generation.
+
+```powershell
+uv run python -m mini_llm.tiny_training
+```
+
+The default gate uses a two-layer, 32-dimensional model with context length `16`, batch size `32`,
+learning rate `0.01`, and `100` optimizer steps. It is a learning correctness test, not pretraining.
 
 ## Reproducibility
 

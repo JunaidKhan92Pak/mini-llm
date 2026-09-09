@@ -55,6 +55,22 @@ class RuntimeConfig:
             raise ValueError(f"device must be 'auto', 'cpu', or 'cuda', got {self.device!r}")
 
 
+@dataclass(frozen=True, slots=True)
+class SanityTrainingConfig:
+    """Settings for the tiny deterministic PyTorch learning check."""
+
+    steps: int = 100
+    learning_rate: float = 0.1
+
+    def __post_init__(self) -> None:
+        if self.steps <= 0:
+            raise ValueError(f"steps must be positive, got {self.steps}")
+        if self.learning_rate <= 0.0:
+            raise ValueError(
+                f"learning_rate must be positive, got {self.learning_rate}"
+            )
+
+
 def development_model_config(vocab_size: int) -> ModelConfig:
     """Return the deliberately small CPU-friendly configuration for early validation."""
 
@@ -67,4 +83,3 @@ def development_model_config(vocab_size: int) -> ModelConfig:
         feed_forward_dim=256,
         dropout=0.0,
     )
-

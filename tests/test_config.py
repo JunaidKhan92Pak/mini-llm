@@ -1,6 +1,11 @@
 import pytest
 
-from mini_llm.config import ModelConfig, RuntimeConfig, development_model_config
+from mini_llm.config import (
+    ModelConfig,
+    RuntimeConfig,
+    SanityTrainingConfig,
+    development_model_config,
+)
 
 
 def test_development_config_is_small_and_attention_compatible() -> None:
@@ -69,3 +74,9 @@ def test_runtime_config_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="device"):
         RuntimeConfig(device="tpu")  # type: ignore[arg-type]
 
+
+def test_sanity_training_config_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="steps"):
+        SanityTrainingConfig(steps=0)
+    with pytest.raises(ValueError, match="learning_rate"):
+        SanityTrainingConfig(learning_rate=0.0)

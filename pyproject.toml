@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mini-llm"
 version = "0.1.0"
-description = "An educational, from-scratch GPT-style language model in PyTorch."
+description = "JeePeeTee: an educational, from-scratch GPT-style language model in PyTorch."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

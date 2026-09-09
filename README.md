@@ -1,13 +1,14 @@
-# Mini LLM
+# JeePeeTee
 
-Mini LLM is an educational project for building a small, decoder-only GPT-style language
+JeePeeTee is an educational project for building a small, decoder-only GPT-style language
 model directly with Python and PyTorch. The goal is a technically correct and understandable
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository is currently at **Phase 0: project foundation**. It contains configuration,
-runtime reproducibility helpers, and test infrastructure. It does not yet contain a tokenizer,
-Transformer, dataset pipeline, training loop, or inference implementation.
+This repository is currently at **Phase 1: PyTorch sanity pipeline**. It proves that tensors,
+device selection, forward passes, loss calculation, backpropagation, and optimizer updates work
+before language-model components are introduced. It does not yet contain a tokenizer,
+Transformer, language-data pipeline, or LLM training loop.
 
 ## Requirements
 
@@ -37,13 +38,14 @@ On Linux or macOS, use `source .venv/bin/activate` instead.
 ```powershell
 uv run pytest
 uv run ruff check .
+uv run python -m mini_llm.sanity
 ```
 
 ## Current structure
 
 ```text
 mini-llm/
-├── src/mini_llm/       # Importable package, configuration, and runtime helpers
+├── src/mini_llm/       # Package, configuration, runtime, and sanity pipeline
 ├── tests/              # Automated tests
 ├── pyproject.toml      # Package metadata, dependencies, and tool configuration
 └── README.md
@@ -61,19 +63,31 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
 
 ## Roadmap
 
-1. **Phase 0 — Foundation (current):** packaging, configuration, reproducibility, and tests.
-2. **Phase 1 — Tokenizer fundamentals:** deterministic encode/decode behavior and special-token
+1. **Phase 0 — Foundation (complete):** packaging, configuration, reproducibility, and tests.
+2. **Phase 1 — PyTorch sanity pipeline (current):** deterministic tensor, gradient, optimizer,
+   and loss-decrease verification on the tiny relation `y = 2x + 1`.
+3. **Phase 2 — Tokenizer fundamentals:** deterministic encode/decode behavior and special-token
    handling using a tiny local corpus.
-3. **Phase 2 — Transformer components:** causal attention, feed-forward layers, residual paths,
+4. **Phase 3 — Transformer components:** causal attention, feed-forward layers, residual paths,
    and shape-focused tests.
-4. **Phase 3 — Debug model and objective:** end-to-end forward pass, target shifting, loss, and
-   backward-pass verification.
-5. **Later phases:** checkpointing, generation, evaluation, curated data, pretraining, scaling,
+5. **Phase 4 — Debug model and language objective:** end-to-end logits, target shifting, loss,
+   backward-pass, and overfit-one-batch verification.
+6. **Later phases:** checkpointing, generation, evaluation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
+
+## Phase 1 sanity pipeline
+
+The sanity model is deliberately a single linear layer, not an LLM. It learns the fixed synthetic
+relation `y = 2x + 1` using mean-squared error and SGD. If its deterministic loss falls sharply and
+its parameters converge toward weight `2` and bias `1`, the essential PyTorch training path is
+working. Run it with:
+
+```powershell
+uv run python -m mini_llm.sanity
+```
 
 ## Reproducibility
 
 Call `seed_everything` before experiments. It seeds Python and PyTorch, including all CUDA devices
 when available. Strict deterministic algorithms are opt-in because some operations or platforms
 do not support them and because they can reduce performance.
-

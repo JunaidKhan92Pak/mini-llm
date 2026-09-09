@@ -5,7 +5,7 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository has completed **Phase 9: tiny overfit / sanity training**. `JeePeeTee` combines
+This repository has completed **Phase 10: real BPE tokenizer integration**. `JeePeeTee` combines
 token and positional embeddings, configurable stacked causal Transformer blocks, final LayerNorm,
 and an untied vocabulary projection that returns raw logits. Unit tests validate each component,
 while a CPU integration test covers the complete text-to-loss-and-backward pipeline before real
@@ -16,6 +16,7 @@ training begins.
 - Python 3.11 or newer
 - Windows, Linux, or macOS
 - CPU-only development is supported; CUDA is optional and is never assumed
+- Hugging Face `tokenizers` for locally trained byte-level BPE
 
 [`uv`](https://docs.astral.sh/uv/) is recommended for reproducible local environments, though
 the project remains installable with standard Python tooling.
@@ -85,7 +86,9 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
    tests plus a tokenizer-to-loss-and-backward integration smoke test.
 10. **Phase 9 — Tiny overfit / sanity training (complete):** deterministic tiny-text
     memorization, prediction inspection, finite-gradient checks, and checkpoint verification.
-11. **Later phases:** generation, curated data, pretraining, scaling,
+11. **Phase 10 — Real BPE tokenizer integration (complete):** locally trained byte-level BPE,
+    stable special tokens, deterministic save/load, Unicode coverage, and MiniGPT integration.
+12. **Later phases:** generation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
 
 ## Phase 1 sanity pipeline
@@ -106,9 +109,8 @@ remaining IDs to sorted characters observed in a supplied local corpus. Sorting 
 creation independent of corpus order. Known text decodes exactly, while unseen characters map to
 `UNK`. Tokenizer JSON files store a type and schema version so incompatible files fail clearly.
 
-This character tokenizer exists to make tokenization mechanics transparent. It is not intended
-for meaningful language-model training; a later phase will introduce a practical subword
-tokenizer after the surrounding model pipeline is correct.
+This character tokenizer remains available for educational tests and debugging. Future corpus
+training should use the byte-level BPE tokenizer introduced in Phase 10.
 
 ## Phase 3 embeddings and attention
 
@@ -205,6 +207,19 @@ uv run python -m mini_llm.tiny_training
 
 The default gate uses a two-layer, 32-dimensional model with context length `16`, batch size `32`,
 learning rate `0.01`, and `100` optimizer steps. It is a learning correctness test, not pretraining.
+
+## Phase 10 byte-level BPE tokenizer
+
+`BPETokenizer` trains a new BPE vocabulary from local strings through Hugging Face's lightweight
+`tokenizers` library; it never downloads or reuses a pretrained tokenizer. Byte-level coverage
+preserves arbitrary Unicode text, while learned merges compress common byte sequences into
+subword tokens. A target vocabulary is supplied explicitly when training, with a minimum of `260`
+entries: all 256 byte values plus four special tokens.
+
+The special-token order is centralized as `<pad>=0`, `<bos>=1`, `<eos>=2`, and `<unk>=3` and is
+validated again when a saved tokenizer is loaded. The model configuration must use the
+tokenizer's reported `vocab_size`; `validate_vocab_size` fails clearly on a mismatch. The original
+character tokenizer remains available for small educational experiments.
 
 ## Reproducibility
 

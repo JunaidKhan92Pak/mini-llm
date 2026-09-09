@@ -13,6 +13,7 @@ import torch
 
 from mini_llm.bpe_tokenizer import BPETokenizer
 from mini_llm.config import ModelConfig, RuntimeConfig
+from mini_llm.generation import GenerationConfig, generate
 from mini_llm.model import JeePeeTee, causal_language_model_loss
 from mini_llm.pretraining.pipeline import FixedTokenSequenceDataset
 from mini_llm.runtime import resolve_device, seed_everything
@@ -170,19 +171,13 @@ def generate_greedy(
 ) -> str:
     """Generate a controlled argmax sample for before/after comparisons."""
 
-    token_ids = tokenizer.encode(prompt, add_bos=True)
-    was_training = model.training
-    model.eval()
-    with torch.no_grad():
-        for _ in range(max_new_tokens):
-            context = token_ids[-model.config.context_length :]
-            inputs = torch.tensor([context], dtype=torch.long, device=device)
-            next_id = int(model(inputs)[0, -1].argmax().item())
-            token_ids.append(next_id)
-            if next_id == tokenizer.eos_token_id:
-                break
-    model.train(was_training)
-    return tokenizer.decode(token_ids, skip_special_tokens=True)
+    return generate(
+        model,
+        tokenizer,
+        prompt,
+        GenerationConfig(max_new_tokens=max_new_tokens, strategy="greedy"),
+        device=device,
+    ).text
 
 
 def _tokenizer_metadata(tokenizer: BPETokenizer, tokenizer_path: Path) -> dict[str, Any]:

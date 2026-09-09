@@ -335,3 +335,43 @@ The real Phase 11 data smoke used batch size 2 for three optimizer steps. Train 
 valid. The trainer now correctly accepts data sequences shorter than a model's maximum context.
 This preset is technically ready, but Phase 13's token-mixture imbalance and undertraining findings
 still need correction before spending resources on a full 5M run.
+
+## Phase 15 larger balanced corpus
+
+The larger-corpus pipeline selects documents by BPE token budget instead of document count. Its
+configurable target defaults to 20 million tokens at context 128 with a deterministic 98/2
+document-level train/validation split. Exact deduplication occurs before the split, and the manifest
+records hash-overlap checks, malformed/quality rejections, retained and selected examples, average
+sample size, per-source tokens, final percentages, schemas, URLs, splits, and licensing notes.
+
+The accepted reduced-scope source weights are 40% FineWeb-Edu/Cosmopedia educational text, 30%
+CodeSearchNet code (20% Python and 10% JavaScript), 15% UltraChat general Q&A, 10% CodeAlpaca
+coding Q&A, and 5% Dolly instruction/writing examples. Extremely short,
+oversized, corrupt, low-alphanumeric, and line-repeated samples are filtered. A content/config/
+tokenizer fingerprint permits safe processed-tensor cache reuse.
+
+```powershell
+python -m mini_llm.pretraining.larger_prepare data/raw/phase15 `
+  data/processed/phase11-development/tokenizer.json data/processed/phase15-balanced `
+  --target-tokens 20000000 --context-length 128
+```
+
+Required local JSONL filenames are `fineweb_edu.jsonl`, `cosmopedia_v2.jsonl`,
+`python_codesearchnet.jsonl`, `javascript_codesearchnet.jsonl`, `dolly_15k.jsonl`,
+`code_alpaca_20k.jsonl`, and `ultrachat_200k.jsonl`. TypeScript, HTML, CSS, SQL, and dedicated Git
+coverage are explicitly deferred; they must be added through a new versioned corpus before claiming
+support for those domains.
+
+CodeSearchNet mirrors declare Apache-2.0, but the exported rows omit the original per-repository
+license mapping. Their provenance therefore remains `review_required` before redistribution.
+
+The accepted local ZIP produced 19,999,767 approximate tokens from 130,011 raw examples. Quality
+filtering retained 118,026 and rejected 11,985 examples, including one exact duplicate. Token-budget
+selection used 39,320 documents with achieved category shares of 40.0003% general/educational,
+30.0003% Python/JavaScript code, 14.9992% general Q&A, 10.0001% technical Q&A, and 5.0000%
+instruction/writing. The deterministic split contains 38,534 training documents (152,053 packed
+sequences) and 786 validation documents (2,983 sequences), with zero document-hash overlap.
+
+The processed directory is self-contained with its tokenizer, metadata manifest, cleaned JSONL,
+and cached train/validation tensors. TypeScript, HTML, CSS, SQL, and dedicated Git coverage remain
+deferred limitations rather than implied capabilities.

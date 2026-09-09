@@ -5,10 +5,11 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository is currently at **Phase 7: complete GPT-style Mini LLM**. `JeePeeTee` combines
+This repository has completed **Phase 8: complete model validation and testing**. `JeePeeTee` combines
 token and positional embeddings, configurable stacked causal Transformer blocks, final LayerNorm,
-and an untied vocabulary projection that returns raw logits. The model is validated for causality,
-deterministic evaluation, gradients, context limits, checkpoints, and CPU execution.
+and an untied vocabulary projection that returns raw logits. Unit tests validate each component,
+while a CPU integration test covers the complete text-to-loss-and-backward pipeline before real
+training begins.
 
 ## Requirements
 
@@ -78,9 +79,11 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
    batches, AdamW training, validation metrics, gradient clipping, and checkpoint resume.
 7. **Phase 6 — Complete Transformer block (complete):** isolated pre-norm block verification,
    explicit residual shape guards, causality, dropout behavior, and parameter accounting.
-8. **Phase 7 — Complete GPT-style model (current):** configurable block stacking, final
+8. **Phase 7 — Complete GPT-style model (complete):** configurable block stacking, final
    normalization, raw vocabulary logits, model-level validation, and parameter accounting.
-9. **Later phases:** generation, curated data, pretraining, scaling,
+9. **Phase 8 — Complete model validation and testing (complete):** component-level regression
+   tests plus a tokenizer-to-loss-and-backward integration smoke test.
+10. **Later phases:** generation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
 
 ## Phase 1 sanity pipeline
@@ -178,6 +181,13 @@ configuration with vocabulary `128`, context `64`, width `64`, two blocks, four 
 width `256`, JeePeeTee has 120,576 trainable parameters: 12,288 embeddings, 99,968 Transformer
 blocks, 128 final normalization, and 8,192 LM head. PyTorch's well-tested default initialization is
 retained; specialized GPT initialization is deferred until scaling evidence justifies it.
+
+## Phase 8 verification gate
+
+The test suite checks both isolated behavior and cross-component contracts. The end-to-end CPU
+gate encodes tiny text, creates exactly-once-shifted input and target windows through a DataLoader,
+runs JeePeeTee to obtain raw logits, computes cross-entropy, and performs backward propagation.
+It verifies finite outputs and gradients without running a real training job or optimizer loop.
 
 ## Reproducibility
 

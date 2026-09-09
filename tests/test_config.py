@@ -1,10 +1,12 @@
 import pytest
 
 from mini_llm.config import (
+    DataConfig,
     DebugOverfitConfig,
     ModelConfig,
     RuntimeConfig,
     SanityTrainingConfig,
+    TrainingConfig,
     development_model_config,
 )
 
@@ -90,3 +92,14 @@ def test_debug_overfit_config_rejects_invalid_values() -> None:
         DebugOverfitConfig(learning_rate=0.0)
     with pytest.raises(ValueError, match="weight_decay"):
         DebugOverfitConfig(weight_decay=-0.1)
+
+
+def test_data_and_training_configs_reject_invalid_values() -> None:
+    with pytest.raises(ValueError, match="validation_fraction"):
+        DataConfig(validation_fraction=1.0)
+    with pytest.raises(ValueError, match="stride"):
+        DataConfig(stride=0)
+    with pytest.raises(ValueError, match="batch_size"):
+        TrainingConfig(batch_size=0)
+    with pytest.raises(ValueError, match="gradient_clip_norm"):
+        TrainingConfig(gradient_clip_norm=0.0)

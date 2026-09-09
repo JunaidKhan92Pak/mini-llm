@@ -5,10 +5,10 @@ model directly with Python and PyTorch. The goal is a technically correct and un
 implementation that grows from a CPU-friendly debug model toward configurations of roughly
 1M, 5M, and 10M parameters.
 
-This repository is currently at **Phase 4: debug decoder and language objective**. JeePeeTee now
-has pre-normalized Transformer blocks, feed-forward networks, residual paths, stacked blocks, final
-vocabulary logits, explicit next-token shifting, and a deterministic one-batch overfit gate. It
-does not yet contain a production training loop, generation, checkpoints, or real language data.
+This repository is currently at **Phase 5: baseline local training**. It adds leakage-aware local
+token windows, deterministic mini-batches, a single-device AdamW trainer, train/validation metrics,
+gradient clipping, token/step counters, and versioned checkpoint save/load/resume. It does not yet
+contain generation, dataset downloading, a subword tokenizer, scheduling, or GPU optimization.
 
 ## Requirements
 
@@ -46,7 +46,8 @@ uv run python -m mini_llm.sanity
 ```text
 mini-llm/
 ├── src/mini_llm/       # Package, runtime, tokenizer, and sanity pipeline
-│   └── model/          # Embeddings, attention, Transformer blocks, and decoder
+│   ├── model/          # Embeddings, attention, Transformer blocks, and decoder
+│   └── training/       # Local windows, baseline trainer, metrics, and checkpoints
 ├── tests/              # Automated tests
 ├── pyproject.toml      # Package metadata, dependencies, and tool configuration
 └── README.md
@@ -71,9 +72,11 @@ vocabulary size so that the future tokenizer and model cannot silently disagree.
    special-token handling, padding, serialization, and model vocabulary synchronization.
 4. **Phase 3 — Embeddings and causal attention (complete):** learned token/position embeddings,
    explicit causal masking, scaled dot-product attention, and multi-head self-attention.
-5. **Phase 4 — Debug decoder model and language objective (current):** normalization, feed-forward layers,
+5. **Phase 4 — Debug decoder model and language objective (complete):** normalization, feed-forward layers,
    residual paths, stacked blocks, logits, target shifting, and overfit-one-batch verification.
-6. **Later phases:** checkpointing, generation, evaluation, curated data, pretraining, scaling,
+6. **Phase 5 — Baseline local training (current):** leakage-aware token windows, deterministic
+   batches, AdamW training, validation metrics, gradient clipping, and checkpoint resume.
+7. **Later phases:** generation, curated data, pretraining, scaling,
    and supervised instruction fine-tuning—each gated by tests at the previous scale.
 
 ## Phase 1 sanity pipeline
@@ -121,6 +124,19 @@ inputs `tokens[:, :-1]` and targets `tokens[:, 1:]`. `causal_language_model_loss
 cross-entropy to those aligned logits and targets and supports an ignored target index for future
 padding-aware batches. The debug trainer repeatedly fits one synthetic token batch; this is a
 correctness gate, not a general-purpose training system.
+
+## Phase 5 baseline training
+
+The data pipeline first splits one local token stream contiguously into independent training and
+validation regions, then creates shifted windows inside each region. No window crosses the split.
+The training loader shuffles deterministically with a seeded PyTorch generator; validation order
+is fixed.
+
+The baseline trainer uses AdamW on one automatically selected device, tracks global steps and
+tokens processed, evaluates periodically, and optionally clips gradients. Versioned checkpoints
+contain model configuration, model weights, optimizer state, training arguments, counters, and
+PyTorch RNG state. Loading rejects incompatible model configurations rather than silently applying
+weights to the wrong architecture.
 
 ## Reproducibility
 

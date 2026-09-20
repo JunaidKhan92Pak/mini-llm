@@ -1,0 +1,55 @@
+{
+  "approximate_tokens": 163,
+  "cleaned_examples": 5,
+  "context_length": 8,
+  "deduplicate": true,
+  "max_characters": 1000,
+  "min_characters": 10,
+  "raw_examples": 10,
+  "seed": 42,
+  "selected_examples": 4,
+  "sources": [
+    {
+      "approximate_tokens": 106,
+      "cleaned_examples": 2,
+      "key": "educational:default",
+      "license": "test-license",
+      "license_notes": "Offline deterministic fixture.",
+      "license_status": "documented",
+      "name": "educational",
+      "observed_schema": {
+        "id": "int",
+        "language": "str",
+        "text": "str"
+      },
+      "raw_examples": 6,
+      "selected_examples": 2,
+      "source_url": "https://example.test/educational",
+      "split": "train",
+      "subset": null
+    },
+    {
+      "approximate_tokens": 57,
+      "cleaned_examples": 3,
+      "key": "code:default",
+      "license": "test-license",
+      "license_notes": "Offline deterministic fixture.",
+      "license_status": "documented",
+      "name": "code",
+      "observed_schema": {
+        "content": "str",
+        "lang": "str"
+      },
+      "raw_examples": 4,
+      "selected_examples": 2,
+      "source_url": "https://example.test/code",
+      "split": "train",
+      "subset": null
+    }
+  ],
+  "train_documents": 3,
+  "train_sequences": 15,
+  "validation_documents": 1,
+  "validation_fraction": 0.25,
+  "validation_sequences": 2
+}

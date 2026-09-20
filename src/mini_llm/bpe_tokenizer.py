@@ -11,8 +11,7 @@ from tokenizers.models import BPE
 from tokenizers.pre_tokenizers import ByteLevel
 from tokenizers.trainers import BpeTrainer
 
-from mini_llm.tokenizer import SPECIAL_TOKENS
-
+SPECIAL_TOKENS = ("<pad>", "<bos>", "<eos>", "<unk>")
 BPE_TOKENIZER_TYPE = "byte-level-bpe"
 BPE_TOKENIZER_VERSION = 1
 MINIMUM_BPE_VOCAB_SIZE = 256 + len(SPECIAL_TOKENS)

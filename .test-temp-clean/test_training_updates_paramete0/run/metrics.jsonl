@@ -1,0 +1,6 @@
+{"event": "metrics", "global_step": 0, "gradient_norm": null, "learning_rate": 0.001, "perplexity": 269.47576545871505, "tokens_per_second": 0.0, "tokens_processed": 0, "training_loss": 5.596478462219238, "validation_loss": 5.596478462219238}
+{"event": "generation", "global_step": 0, "prompt": "Python is", "text": "Python isG1"}
+{"event": "progress", "global_step": 1, "gradient_norm": 1.2649099826812744, "last_microbatch_loss": 5.901127815246582, "learning_rate": 0.001, "tokens_per_second": 1265.8628468976688, "tokens_processed": 16}
+{"event": "metrics", "global_step": 2, "gradient_norm": 1.539284110069275, "learning_rate": 0.0007, "perplexity": 262.6470909749713, "tokens_per_second": 1846.615506786955, "tokens_processed": 32, "training_loss": 5.5708112716674805, "validation_loss": 5.5708112716674805}
+{"event": "metrics", "global_step": 4, "gradient_norm": 1.1391593217849731, "learning_rate": 9.999999999999998e-05, "perplexity": 258.4214180673931, "tokens_per_second": 2329.0089036676904, "tokens_processed": 64, "training_loss": 5.554591655731201, "validation_loss": 5.554591655731201}
+{"event": "generation", "global_step": 4, "prompt": "Python is", "text": "Python isG1"}

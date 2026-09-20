@@ -3,7 +3,7 @@
 .uv-python/
 __pycache__/
 *.py[cod]
-.pytest_*/
+.pytest*/
 .ruff_cache/
 .coverage
 htmlcov/

@@ -1,0 +1,43 @@
+{
+  "dataset": "roneneldan/TinyStories",
+  "revision": "test-revision",
+  "source_url": "https://huggingface.co/datasets/roneneldan/TinyStories",
+  "license": "CDLA-Sharing-1.0",
+  "license_notes": "Synthetic stories; retain source and license when redistributing data.",
+  "purpose": "Story completion pretraining; does not establish factual Q&A accuracy.",
+  "context_length": 16,
+  "seed": 42,
+  "train": {
+    "raw": 20,
+    "malformed_or_length": 0,
+    "duplicates": 0,
+    "retained": 20,
+    "tokens": 1315,
+    "sequences": 77
+  },
+  "validation": {
+    "raw": 5,
+    "malformed_or_length": 0,
+    "duplicates": 0,
+    "retained": 5,
+    "tokens": 1095,
+    "sequences": 64
+  },
+  "tokenizer_vocab_size": 300,
+  "tokenizer_training_split": "train",
+  "tokenizer_sha256": "1339deafbe61f7757ef8a2e5a74f9526ae49c25f79d10158c6463322fbb0d7f2",
+  "evaluation_prompts": [
+    "Once upon a time, two friends",
+    "One day, Lily lost her toy.",
+    "Tom and his friend went to the park.",
+    "A little dog wanted to help"
+  ],
+  "settings": {
+    "train_examples": 20,
+    "validation_examples": 5,
+    "requested_vocab_size": 300,
+    "min_characters": 80,
+    "max_characters": 8000,
+    "canonical_cross_split_deduplication": true
+  }
+}

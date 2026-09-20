@@ -1,0 +1,1 @@
+{"text": "const square = (value) => value * value;", "source_key": "code:default", "content_kind": "code", "language": "mixed-code"}

@@ -1,16 +1,11 @@
-from pathlib import Path
-
 import torch
 
-from mini_llm.bpe_tokenizer import BPETokenizer
 from mini_llm.config import (
-    TrainingConfig,
     debug_model_config,
     five_million_model_config,
     mini_model_config,
 )
 from mini_llm.model import JeePeeTee, causal_language_model_loss
-from mini_llm.training.checkpoint import load_checkpoint, save_checkpoint
 
 VOCAB_SIZE = 2048
 
@@ -63,39 +58,3 @@ def test_five_million_preset_remains_causal() -> None:
         original_logits = model(original)
         changed_logits = model(changed_future)
     torch.testing.assert_close(original_logits[:, :5], changed_logits[:, :5])
-
-
-def test_five_million_tokenizer_and_checkpoint_round_trip(tmp_path: Path) -> None:
-    tokenizer = BPETokenizer.train(
-        ["Python and JavaScript are programming languages."], vocab_size=300
-    )
-    config = five_million_model_config(tokenizer.vocab_size)
-    tokenizer.validate_vocab_size(config.vocab_size)
-    model = JeePeeTee(config).eval()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-    inputs = torch.tensor([tokenizer.encode("Python")])
-    with torch.no_grad():
-        expected = model(inputs)
-    checkpoint = tmp_path / "five-million.pt"
-    training_config = TrainingConfig(max_steps=1, evaluation_interval=1)
-    save_checkpoint(
-        checkpoint,
-        model=model,
-        optimizer=optimizer,
-        global_step=0,
-        tokens_processed=0,
-        training_config=training_config,
-    )
-
-    restored = JeePeeTee(config).eval()
-    restored_optimizer = torch.optim.AdamW(restored.parameters(), lr=1e-4)
-    step, tokens = load_checkpoint(
-        checkpoint,
-        model=restored,
-        optimizer=restored_optimizer,
-        device=torch.device("cpu"),
-    )
-    with torch.no_grad():
-        actual = restored(inputs)
-    assert (step, tokens) == (0, 0)
-    torch.testing.assert_close(actual, expected, rtol=0, atol=0)

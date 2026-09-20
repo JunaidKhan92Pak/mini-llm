@@ -253,9 +253,19 @@ def load_phase12_checkpoint(
 
     payload: Any = torch.load(path, map_location=device, weights_only=True)
     required = {
-        "checkpoint_version", "model_config", "run_config", "training_metadata", "model_state",
-        "optimizer_state", "scheduler_state", "global_step", "tokens_processed",
-        "tokenizer_metadata", "dataset_metadata", "torch_rng_state", "cuda_rng_states",
+        "checkpoint_version",
+        "model_config",
+        "run_config",
+        "training_metadata",
+        "model_state",
+        "optimizer_state",
+        "scheduler_state",
+        "global_step",
+        "tokens_processed",
+        "tokenizer_metadata",
+        "dataset_metadata",
+        "torch_rng_state",
+        "cuda_rng_states",
     }
     if not isinstance(payload, dict) or not required.issubset(payload):
         raise ValueError("Phase 12 checkpoint is missing required fields")
@@ -274,7 +284,7 @@ def load_phase12_checkpoint(
     scheduler.load_state_dict(payload["scheduler_state"])
     torch.set_rng_state(payload["torch_rng_state"].cpu())
     if device.type == "cuda" and payload["cuda_rng_states"]:
-        torch.cuda.set_rng_state_all(payload["cuda_rng_states"])
+        torch.cuda.set_rng_state_all([state.cpu() for state in payload["cuda_rng_states"]])
     return payload["global_step"], payload["tokens_processed"], payload["dataset_metadata"]
 
 
@@ -381,21 +391,25 @@ def train_phase12(
     if log_path.exists():
         for line in log_path.read_text(encoding="utf-8").splitlines():
             previous = json.loads(line)
-            if previous.get("event") == "metrics" and previous.get("global_step", 0) > 0:
-                best_validation_loss = min(
-                    best_validation_loss, float(previous["validation_loss"])
-                )
+            if previous.get("event") == "metrics":
+                best_validation_loss = min(best_validation_loss, float(previous["validation_loss"]))
     session_tokens = 0
     training_elapsed_seconds = 0.0
 
     def record_metrics(gradient_norm: float | None) -> PretrainingMetric:
         train_loss = evaluate_sequences(
-            model, train_sequences, batch_size=run_config.batch_size,
-            max_batches=run_config.evaluation_batches, device=device,
+            model,
+            train_sequences,
+            batch_size=run_config.batch_size,
+            max_batches=run_config.evaluation_batches,
+            device=device,
         )
         validation_loss = evaluate_sequences(
-            model, validation_sequences, batch_size=run_config.batch_size,
-            max_batches=run_config.evaluation_batches, device=device,
+            model,
+            validation_sequences,
+            batch_size=run_config.batch_size,
+            max_batches=run_config.evaluation_batches,
+            device=device,
         )
         metric = PretrainingMetric(
             global_step=global_step,
@@ -405,9 +419,7 @@ def train_phase12(
             perplexity=math.exp(validation_loss),
             learning_rate=optimizer.param_groups[0]["lr"],
             gradient_norm=gradient_norm,
-            tokens_per_second=(
-                session_tokens / max(training_elapsed_seconds, 1e-9)
-            ),
+            tokens_per_second=(session_tokens / max(training_elapsed_seconds, 1e-9)),
         )
         metrics.append(metric)
         _append_jsonl(log_path, {"event": "metrics", **asdict(metric)})
@@ -419,15 +431,32 @@ def train_phase12(
                 global_step=global_step,
                 prompt=prompt,
                 text=generate_greedy(
-                    model, tokenizer, prompt,
-                    max_new_tokens=run_config.generation_max_new_tokens, device=device,
+                    model,
+                    tokenizer,
+                    prompt,
+                    max_new_tokens=run_config.generation_max_new_tokens,
+                    device=device,
                 ),
             )
             samples.append(sample)
             _append_jsonl(log_path, {"event": "generation", **asdict(sample)})
 
     if global_step == 0:
-        record_metrics(None)
+        initial_metric = record_metrics(None)
+        if initial_metric.validation_loss < best_validation_loss:
+            best_validation_loss = initial_metric.validation_loss
+            save_phase12_checkpoint(
+                best_checkpoint,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                global_step=0,
+                tokens_processed=0,
+                run_config=run_config,
+                runtime_config=runtime_config,
+                tokenizer_metadata=tokenizer_info,
+                dataset_metadata=dataset_metadata,
+            )
         record_samples()
 
     latest_gradient_norm: float | None = None
@@ -437,9 +466,7 @@ def train_phase12(
         optimizer.zero_grad(set_to_none=True)
         accumulated_tokens = 0
         for accumulation_step in range(run_config.gradient_accumulation_steps):
-            batch_step = (
-                global_step * run_config.gradient_accumulation_steps + accumulation_step
-            )
+            batch_step = global_step * run_config.gradient_accumulation_steps + accumulation_step
             inputs, targets = _step_batch(
                 train_sequences,
                 step=batch_step,
@@ -469,6 +496,19 @@ def train_phase12(
         tokens_processed += accumulated_tokens
         session_tokens += accumulated_tokens
         training_elapsed_seconds += time.perf_counter() - step_started
+        if global_step == 1 or global_step % 100 == 0:
+            _append_jsonl(
+                log_path,
+                {
+                    "event": "progress",
+                    "global_step": global_step,
+                    "tokens_processed": tokens_processed,
+                    "last_microbatch_loss": float(loss.detach()),
+                    "gradient_norm": latest_gradient_norm,
+                    "learning_rate": optimizer.param_groups[0]["lr"],
+                    "tokens_per_second": session_tokens / max(training_elapsed_seconds, 1e-9),
+                },
+            )
 
         if global_step % run_config.evaluation_interval == 0 or global_step == limit:
             metric = record_metrics(latest_gradient_norm)
@@ -488,10 +528,7 @@ def train_phase12(
                 )
         if global_step % run_config.generation_interval == 0 or global_step == limit:
             record_samples()
-        if (
-            global_step % run_config.checkpoint_interval == 0
-            or global_step == limit
-        ):
+        if global_step % run_config.checkpoint_interval == 0 or global_step == limit:
             checkpoint = output_dir / f"checkpoint-step-{global_step:06d}.pt"
             save_phase12_checkpoint(
                 checkpoint,

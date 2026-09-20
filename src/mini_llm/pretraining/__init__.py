@@ -1,16 +1,5 @@
-"""Public pretraining data preparation API."""
+"""Data preparation and training APIs used by the active pretraining workflow."""
 
-from mini_llm.pretraining.balanced_pipeline import (
-    BalancedCorpusConfig,
-    BalancedCorpusMetadata,
-    BalancedPreparedData,
-    BalancedSourceConfig,
-    BalancedSourceMetadata,
-    format_record,
-    passes_quality_filters,
-    phase15_sources,
-    prepare_balanced_corpus,
-)
 from mini_llm.pretraining.config import (
     DatasetSourceConfig,
     PretrainingDataConfig,
@@ -49,11 +38,6 @@ from mini_llm.pretraining.real_training import (
 )
 
 __all__ = [
-    "BalancedCorpusConfig",
-    "BalancedCorpusMetadata",
-    "BalancedPreparedData",
-    "BalancedSourceConfig",
-    "BalancedSourceMetadata",
     "CleanDocument",
     "DEFAULT_PROMPTS",
     "DatasetSourceConfig",
@@ -77,15 +61,11 @@ __all__ = [
     "mix_documents",
     "normalize_text",
     "pack_documents",
-    "passes_quality_filters",
     "prepare_pretraining_data",
-    "prepare_balanced_corpus",
-    "phase15_sources",
     "phase12_model_config",
     "record_matches_filters",
     "split_documents",
     "load_phase12_checkpoint",
     "save_phase12_checkpoint",
     "train_phase12",
-    "format_record",
 ]

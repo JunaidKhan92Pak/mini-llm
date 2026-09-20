@@ -1,0 +1,3 @@
+{"text": "The solar system contains planets that orbit a star called the Sun.", "source_key": "educational:default", "content_kind": "general", "language": "en"}
+{"text": "Photosynthesis converts light energy into chemical energy in plants.", "source_key": "educational:default", "content_kind": "general", "language": "en"}
+{"text": "def add(left, right):\n    return left + right", "source_key": "code:default", "content_kind": "code", "language": "mixed-code"}

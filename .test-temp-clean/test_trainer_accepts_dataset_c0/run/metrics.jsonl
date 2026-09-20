@@ -1,0 +1,3 @@
+{"event": "metrics", "global_step": 0, "gradient_norm": null, "learning_rate": 0.0003, "perplexity": 212.5469292400228, "tokens_per_second": 0.0, "tokens_processed": 0, "training_loss": 5.3591628074646, "validation_loss": 5.3591628074646}
+{"event": "progress", "global_step": 1, "gradient_norm": 1.1034173965454102, "last_microbatch_loss": 5.5218729972839355, "learning_rate": 2.999999999999999e-05, "tokens_per_second": 2559.303873579854, "tokens_processed": 16}
+{"event": "metrics", "global_step": 1, "gradient_norm": 1.1034173965454102, "learning_rate": 2.999999999999999e-05, "perplexity": 211.5090098195225, "tokens_per_second": 2559.303873579854, "tokens_processed": 16, "training_loss": 5.354267597198486, "validation_loss": 5.354267597198486}

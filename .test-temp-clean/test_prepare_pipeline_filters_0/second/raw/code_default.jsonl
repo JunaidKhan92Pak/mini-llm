@@ -1,0 +1,4 @@
+{"content": "def add(left, right):\n    return left + right\n", "lang": "Python"}
+{"content": "const square = (value) => value * value;\n", "lang": "JavaScript"}
+{"content": "SELECT name FROM students WHERE active = TRUE;\n", "lang": "SQL"}
+{"content": "", "lang": "Python"}

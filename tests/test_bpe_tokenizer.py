@@ -4,11 +4,9 @@ from pathlib import Path
 import pytest
 import torch
 
-from mini_llm.bpe_tokenizer import MINIMUM_BPE_VOCAB_SIZE, BPETokenizer
-from mini_llm.config import ModelConfig, TrainingConfig
+from mini_llm.bpe_tokenizer import MINIMUM_BPE_VOCAB_SIZE, SPECIAL_TOKENS, BPETokenizer
+from mini_llm.config import ModelConfig
 from mini_llm.model import JeePeeTee
-from mini_llm.tokenizer import SPECIAL_TOKENS
-from mini_llm.training import NextTokenDataset
 
 CORPUS = [
     "JeePeeTee learns reusable language patterns.\n" * 4,
@@ -105,13 +103,8 @@ def test_bpe_ids_flow_through_dataset_and_minigpt(tokenizer: BPETokenizer) -> No
         num_heads=4,
         feed_forward_dim=32,
     )
-    dataset = NextTokenDataset(token_ids, context_length=config.context_length, stride=2)
-    loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=TrainingConfig().batch_size,
-        shuffle=False,
-    )
-    inputs, targets = next(iter(loader))
+    rows = token_ids.unfold(0, config.context_length + 1, 2)[:8]
+    inputs, targets = rows[:, :-1], rows[:, 1:]
 
     logits = JeePeeTee(config)(inputs)
 

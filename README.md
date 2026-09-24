@@ -38,6 +38,8 @@ selected-step details, and token arrays. The clickable event log spans the full 
 the bottom. Prompt and generated token pieces each have a readable text array and a matching
 ordered ID array; individual BPE pieces also appear below them. On mobile, the sections
 stack in the same order.
+The selected step shows a short model-operation formula, an input/process/output summary,
+and measured trace values; the formula is a teaching aid rather than an extra model operation.
 Previous/next controls and slow/normal/fast playback let you narrate each step while the
 reply builds one token at a time. The vertical path highlights the active stage, marks
 completed stages for the current prediction, and scrolls to keep playback visible.

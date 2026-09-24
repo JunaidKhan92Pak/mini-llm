@@ -6,7 +6,7 @@
     <meta name="description" content="Run JeePeeTee and watch how a GPT predicts each token." />
     <title>JeePeeTee Learning Lab</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231877F2'/%3E%3Cpath d='M20 15h25v9H30v9h14v9H30c0 7-4 10-12 10h-3v-9h2c2 0 3-1 3-3z' fill='white'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="/styles.css?v=12" />
+    <link rel="stylesheet" href="/styles.css?v=14" />
   </head>
   <body>
     <main class="shell">
@@ -111,20 +111,21 @@
             <section class="stage-explainer" aria-live="polite" aria-labelledby="explainerTitle">
               <div class="explainer-heading">
                 <span class="explainer-number" id="explainerNumber">STEP 1 OF 6</span>
-                <h3 id="explainerTitle">Input tokens</h3>
+                <h3 id="explainerTitle">Tokens and IDs</h3>
               </div>
+              <div class="stage-equation"><span>MODEL OPERATION</span><code id="explainerFormula">text → BPE → token IDs</code></div>
               <div class="stage-narrative">
                 <div class="narrative-row">
                   <span>INPUT</span>
-                  <strong id="explainerInput">Your written prompt</strong>
+                  <strong id="explainerInput">Prompt text</strong>
                 </div>
                 <div class="narrative-row">
                   <span>WHAT HAPPENS</span>
-                  <p id="explainerCopy">The tokenizer breaks your text into small reusable pieces and assigns each piece a numeric ID.</p>
+                  <p id="explainerCopy">BPE splits prompt text into pieces. Each piece gets a vocabulary ID; generated IDs join the context later.</p>
                 </div>
                 <div class="narrative-row">
                   <span>OUTPUT</span>
-                  <strong id="explainerOutput">A sequence of token IDs</strong>
+                  <strong id="explainerOutput">Ordered token IDs</strong>
                 </div>
               </div>
               <div class="stage-evidence" id="stageEvidence" aria-label="Measured values for this step">
@@ -164,6 +165,6 @@
         <p class="truth-note"><strong>What is measured:</strong> token IDs, embedding samples, layer output magnitudes, attention weights for head 1 of the final layer, raw vocabulary scores, and next-token probabilities come from the local checkpoint. The 3D shapes explain the computation order. Attention weights show one connection pattern; they do not explain the model’s complete reasoning. This is inference, not training.</p>
       </section>
     </main>
-    <script src="/app.js?v=12" defer></script>
+    <script src="/app.js?v=14" defer></script>
   </body>
 </html>

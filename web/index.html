@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Run JeePeeTee and watch how a GPT predicts each token." />
+    <title>JeePeeTee Learning Lab</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231877F2'/%3E%3Cpath d='M20 15h25v9H30v9h14v9H30c0 7-4 10-12 10h-3v-9h2c2 0 3-1 3-3z' fill='white'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/styles.css?v=10" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="JeePeeTee home">
+          <span class="brand-mark">J</span>
+          <span>JeePeeTee <b>Learning Lab</b></span>
+        </a>
+        <div class="model-state" id="modelState" role="status">
+          <span class="status-dot"></span>
+          <span>Connecting to the local model…</span>
+        </div>
+      </header>
+
+      <section class="hero" aria-labelledby="workspaceTitle">
+        <div class="hero-copy">
+          <p class="eyebrow">LIVE LOCAL GPT VISUALIZER</p>
+          <h1 id="workspaceTitle">Meet JeePeeTee.<br /><span>A small GPT you can explore.</span></h1>
+          <p class="intro">I built this GPT-style language model from scratch. Give it a story opening, then watch how it predicts each new text piece. Its current training focuses on TinyStories, so it works best as a story completer.</p>
+        </div>
+        <div class="model-facts" id="modelFacts" aria-label="Model architecture">
+          <div><strong id="factParameters">—</strong><span>parameters</span></div>
+          <div><strong id="factLayers">—</strong><span>Transformer layers</span></div>
+          <div><strong id="factContext">—</strong><span>token context</span></div>
+        </div>
+      </section>
+
+      <div class="architecture-strip" aria-label="Model architecture summary">
+        <span>Own BPE tokenizer</span><span aria-hidden="true">→</span>
+        <span id="architectureEmbeddings">Learned embeddings</span><span aria-hidden="true">→</span>
+        <span id="architectureTransformer">Causal Transformer</span><span aria-hidden="true">→</span>
+        <span id="architectureVocabulary">Next-token prediction</span>
+      </div>
+
+      <section class="prompt-workspace panel" aria-label="Prompt and prediction">
+        <div class="column-heading"><span>01</span><div><strong>Prompt &amp; prediction</strong><small>Try your own text</small></div></div>
+        <div class="workspace-panels">
+          <div class="prompt-panel panel">
+            <div class="panel-heading"><span class="step-label">INPUT</span><span class="panel-hint">Start a story or sentence</span></div>
+            <form id="promptForm">
+              <label for="prompt">Your prompt</label>
+              <textarea id="prompt" rows="5" maxlength="1200">Once upon a time, two friends</textarea>
+              <div class="controls">
+                <label class="field"><span>Prediction method</span><select id="strategy"><option value="sample">Creative sample</option><option value="greedy">Most likely token</option></select></label>
+                <label class="field range-field"><span>Reply length <output id="tokenOutput">16</output></span><input id="maxTokens" type="range" min="4" max="48" value="16" step="4" /></label>
+                <div class="prompt-actions"><button id="inspectButton" class="secondary-button" type="button">Inspect prompt</button><button id="generateButton" type="submit">Generate <span aria-hidden="true">→</span></button></div>
+              </div>
+            </form>
+          </div>
+          <div class="response-panel panel" aria-live="polite">
+            <div class="panel-heading"><span class="step-label">OUTPUT</span><span class="finish-badge" id="finishBadge">Ready</span></div>
+            <h2>JeePeeTee continues</h2>
+            <div class="response-copy" id="responseCopy">The reply will appear here one token at a time as the process runs.</div>
+            <div class="response-meta" id="responseMeta">Each prompt starts with a fresh context.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="learning-lab panel" aria-labelledby="labTitle">
+        <div class="lab-heading">
+          <div>
+            <p class="eyebrow">STEP-BY-STEP INFERENCE</p>
+            <h2 id="labTitle">How one token becomes the next</h2>
+          </div>
+          <div class="playback">
+            <span id="stepCounter">Inspect a prompt or generate a reply to begin</span>
+            <label class="speed-field" for="playbackSpeed">Playback speed
+              <select id="playbackSpeed">
+                <option value="slow">Slow</option>
+                <option value="normal" selected>Normal</option>
+                <option value="fast">Fast</option>
+              </select>
+            </label>
+            <button id="previousStep" class="secondary-button" type="button" disabled>← Previous</button>
+            <button id="nextStep" class="secondary-button" type="button" disabled>Next →</button>
+            <button id="pauseButton" class="secondary-button" type="button" disabled>Play</button>
+            <button id="replayButton" class="secondary-button" type="button" disabled>Start over</button>
+          </div>
+        </div>
+
+        <div class="trace-progress" role="progressbar" aria-label="Trace progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="traceProgress"><span id="traceProgressFill"></span></div>
+
+        <div class="studio-grid">
+          <nav class="studio-column steps-column" aria-label="Prediction steps">
+            <div class="column-heading"><span>02</span><div><strong>Follow the steps</strong><small>Top to bottom</small></div></div>
+            <div class="pipeline-scene" id="pipelineScene">
+              <div class="scene-grid"></div>
+              <div class="signal" id="signal" aria-hidden="true"></div>
+              <div class="pipeline" aria-label="Six stages used to predict a token">
+                <button class="stage" data-stage="0" type="button"><small>STEP 1</small><strong>Tokens &amp; IDs</strong><span>BPE splits your prompt</span></button>
+                <button class="stage" data-stage="1" type="button"><small>STEP 2</small><strong>Embeddings</strong><span>Learned number vectors</span></button>
+                <button class="stage transformer" data-stage="2" type="button"><small>STEP 3</small><strong>Transformer</strong><span id="transformerStageLabel">Layers look back</span></button>
+                <button class="stage" data-stage="3" type="button"><small>STEP 4</small><strong>Scores</strong><span id="logitStageLabel">Score possible next pieces</span></button>
+                <button class="stage" data-stage="4" type="button"><small>STEP 5</small><strong>Chances</strong><span>Softmax probabilities</span></button>
+                <button class="stage" data-stage="5" type="button"><small>STEP 6</small><strong>Next token</strong><span id="stageToken">Added to the reply</span></button>
+              </div>
+            </div>
+          </nav>
+
+          <div class="studio-column detail-column">
+            <div class="column-heading"><span>03</span><div><strong>Inside this step</strong><small>See what the model does</small></div></div>
+            <section class="stage-explainer" aria-live="polite" aria-labelledby="explainerTitle">
+              <div class="explainer-heading">
+                <span class="explainer-number" id="explainerNumber">STEP 1 OF 6</span>
+                <h3 id="explainerTitle">Input tokens</h3>
+              </div>
+              <div class="stage-narrative">
+                <div class="narrative-row">
+                  <span>INPUT</span>
+                  <strong id="explainerInput">Your written prompt</strong>
+                </div>
+                <div class="narrative-row">
+                  <span>WHAT HAPPENS</span>
+                  <p id="explainerCopy">The tokenizer breaks your text into small reusable pieces and assigns each piece a numeric ID.</p>
+                </div>
+                <div class="narrative-row">
+                  <span>OUTPUT</span>
+                  <strong id="explainerOutput">A sequence of token IDs</strong>
+                </div>
+              </div>
+              <div class="stage-evidence" id="stageEvidence" aria-label="Measured values for this step">
+                <div class="evidence-label">Waiting for a prompt</div>
+                <p class="evidence-note">Enter text above, then choose Inspect prompt or Generate to see this stage’s real values.</p>
+              </div>
+            </section>
+          </div>
+
+          <aside class="studio-column trace-sidebar" aria-label="Token arrays">
+            <div class="column-heading"><span>04</span><div><strong>Token arrays</strong><small>Real values from this run</small></div></div>
+            <div class="inspection-panel">
+              <div class="inspection-title"><span>Your prompt tokens</span><span id="promptTokenCount">0 tokens</span></div>
+              <p class="inspection-help">Text pieces and IDs match by position: the first piece has the first ID. Spaces inside quoted pieces are part of the token.</p>
+              <div class="token-array"><span>PROMPT TEXT ARRAY</span><code id="promptTextArray">[]</code></div>
+              <div class="token-array"><span>PROMPT ID ARRAY</span><code id="promptIdArray">[]</code></div>
+              <div class="token-array"><span>GENERATED TEXT ARRAY</span><code id="generatedTextArray">[]</code></div>
+              <div class="token-array"><span>GENERATED ID ARRAY</span><code id="generatedIdArray">[]</code></div>
+              <div class="token-stream" id="tokenStream"><span class="empty-chip">Token pieces will appear here</span></div>
+            </div>
+            <div class="answer-assembly" aria-live="polite">
+              <div>
+                <span class="assembly-kicker">REPLY BUILDING LIVE</span>
+                <p>Each chosen token adds one piece.</p>
+              </div>
+              <div class="assembled-answer"><span class="assembly-prompt" id="assemblyPrompt">Your prompt</span><span id="assemblyCompletion"></span><span class="typing-cursor" id="typingCursor" aria-hidden="true"></span></div>
+            </div>
+          </aside>
+        </div>
+        <div class="full-log">
+          <div class="column-heading"><span>05</span><div><strong>Event log</strong><small>Follow or revisit every operation</small></div></div>
+          <div class="trace-console" aria-label="Inference trace log">
+            <div class="trace-console-head"><strong>Inference events</strong><span>Click an entry to revisit it</span></div>
+            <ol id="traceLog"><li>Inspect a prompt or generate to see the log.</li></ol>
+          </div>
+        </div>
+        <p class="truth-note"><strong>What is measured:</strong> token IDs, embedding samples, layer output magnitudes, attention weights for head 1 of the final layer, raw vocabulary scores, and next-token probabilities come from the local checkpoint. The 3D shapes explain the computation order. Attention weights show one connection pattern; they do not explain the model’s complete reasoning. This is inference, not training.</p>
+      </section>
+    </main>
+    <script src="/app.js?v=10" defer></script>
+  </body>
+</html>

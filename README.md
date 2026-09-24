@@ -22,6 +22,33 @@ For deterministic output:
 .\jeeptee --strategy greedy
 ```
 
+## Run the visual web interface
+
+```powershell
+.\jeeptee-web
+```
+
+This starts a local page at `http://127.0.0.1:8765` and opens it in the browser. The
+page lets you inspect prompt BPE pieces, IDs, positions, and measured token-plus-position
+embeddings before generating. During generation it shows context IDs, the last token's
+output magnitude after each Transformer layer, five attention links from one head of the
+final layer, raw vocabulary scores, and next-token probabilities. The full-width prompt
+and prediction section sits above the visualizer. Below it are vertical prediction steps,
+selected-step details, and token arrays. The clickable event log spans the full width at
+the bottom. Prompt and generated token pieces each have a readable text array and a matching
+ordered ID array; individual BPE pieces also appear below them. On mobile, the sections
+stack in the same order.
+Previous/next controls and slow/normal/fast playback let you narrate each step while the
+reply builds one token at a time. Use **Inspect prompt** to study tokenization without
+running the full model, or **Generate** for the complete inference trace.
+The depth effects are an educational representation of the computation order, not a
+literal 3D view of every activation inside the network. Keep the terminal open while
+using the page; press `Ctrl+C` to stop it.
+
+The browser frontend lives in `web/`, while `mini_llm.web` provides the local HTTP bridge to
+PyTorch. A static GitHub Pages deployment can display the interface but cannot run this
+PyTorch checkpoint; a public live demo requires a separate Python inference host.
+
 ## What currently works
 
 - locally trained byte-level BPE tokenizer;
@@ -67,12 +94,20 @@ src/mini_llm/
   generation.py         greedy and sampled autoregressive decoding
   evaluation.py         fixed comparable completion evaluation
   interactive.py        one-prompt command-line interface
+  web.py                local HTTP inference and trace API
   pretraining/
     config.py           data-source configuration
     pipeline.py         cleaning, splitting, packing and tensor loading
     tinystories.py      pinned TinyStories preparation
     real_training.py    optimization, metrics and checkpoints
     run.py              training command
+```
+
+```text
+web/
+  index.html             prompt, response and observatory structure
+  styles.css             responsive pseudo-3D neural pipeline
+  app.js                 API calls and real-token trace playback
 ```
 
 `data/`, `checkpoints/`, virtual environments and test caches are generated local

@@ -26,6 +26,7 @@ const stageToken = $("#stageToken");
 const stageEvidence = $("#stageEvidence");
 const signal = $("#signal");
 const stages = [...document.querySelectorAll(".stage")];
+const pipeline = $(".pipeline");
 const assemblyPrompt = $("#assemblyPrompt");
 const assemblyCompletion = $("#assemblyCompletion");
 const typingCursor = $("#typingCursor");
@@ -35,44 +36,51 @@ const traceProgressFill = $("#traceProgressFill");
 
 let trace = null;
 let traceTimer = null;
+let activeStageIndex = -1;
 let architecture = { embedding_dimension: 384, layers: 7, vocabulary_size: 4096 };
 
 const stageDetails = [
   {
     title: "Tokens and IDs",
-    copy: "BPE maps the prompt into vocabulary pieces and IDs once. On later predictions, the model reuses those IDs plus tokens it has already generated.",
-    input: "Written prompt or existing token IDs",
-    output: "An ordered context of token IDs",
+    formula: "text → BPE → token IDs",
+    copy: "BPE splits prompt text into pieces. Each piece gets a vocabulary ID; generated IDs join the context later.",
+    input: "Prompt text",
+    output: "Ordered token IDs",
   },
   {
     title: "Token + position embeddings",
-    copy: "The model adds a learned token vector to a learned position vector. The chart shows eight measured coordinates of the token being inspected.",
-    input: "Token IDs and positions",
-    output: "A vector at every position",
+    formula: "token[id] + position[t] → vector",
+    copy: "Look up a learned vector for each ID and position, then add the two vectors.",
+    input: "ID + position",
+    output: "One vector per token",
   },
   {
     title: "Seven Transformer layers",
-    copy: "Each layer applies normalization, Q/K/V projections, causal attention, a residual connection, another normalization, and a GELU feed-forward network with another residual connection.",
-    input: "The sequence of embedding vectors",
+    formula: "(causal attention + MLP) × layers → context",
+    copy: "Each layer mixes information from current and earlier tokens, then refines it with an MLP and residual connections.",
+    input: "Token vectors",
     output: "Context-aware vectors",
   },
   {
     title: "Linear vocabulary head",
-    copy: "The final normalized context vector passes through a linear layer. It produces one raw score, called a logit, for every vocabulary token.",
-    input: "Final context vector",
-    output: "Raw vocabulary scores",
+    formula: "final vector → linear head → logits",
+    copy: "Normalize the last context vector and score every possible next token. These raw scores are logits.",
+    input: "Last context vector",
+    output: "One logit per token",
   },
   {
     title: "Probabilities",
-    copy: "After the selected decoding settings are applied, softmax converts scores into next-token chances. These are actual values from the model run.",
-    input: "Adjusted vocabulary scores",
-    output: "A probability distribution",
+    formula: "adjust logits → softmax → probabilities",
+    copy: "Apply the decoding settings, then softmax converts the adjusted scores into next-token chances.",
+    input: "Adjusted logits",
+    output: "Token probabilities",
   },
   {
     title: "Chosen token",
-    copy: "The chosen token ID is decoded into text and added to the context. The next prediction repeats the embedding-to-selection path.",
-    input: "Selected token ID",
-    output: "One more text piece",
+    formula: "choose ID → decode → append text",
+    copy: "Pick an ID by greedy choice or sampling. Decode its text piece and add it to the reply and context.",
+    input: "Next-token chances",
+    output: "One new text piece",
   },
 ];
 
@@ -105,12 +113,12 @@ function renderFlow(items) {
 function renderBlockDiagram() {
   const diagram = makeElement("div", "block-diagram", "");
   [
-    ["01", "LayerNorm"], ["02", "Q · K · V"],
-    ["03", "Causal attention"], ["04", "+ residual"],
-    ["05", "LayerNorm"], ["06", "GELU MLP"],
-    ["07", "+ residual"], ["↻", `Repeat × ${architecture.layers}`],
+    ["01", "Norm → Q/K/V → causal attention"],
+    ["02", "+ residual"],
+    ["03", "Norm → GELU MLP"],
+    ["04", "+ residual"],
   ].forEach(([number, label], index) => {
-    const operation = makeElement("div", `block-operation${index === 2 ? " strong" : ""}`, "");
+    const operation = makeElement("div", `block-operation${index === 0 ? " strong" : ""}`, "");
     operation.append(makeElement("b", "", number), document.createTextNode(label));
     diagram.append(operation);
   });
@@ -152,6 +160,9 @@ async function loadStatus() {
     $("#architectureTransformer").textContent = `${status.layers} causal Transformer layers`;
     $("#architectureVocabulary").textContent = `${status.vocabulary_size.toLocaleString()} token scores`;
     stageDetails[2].title = `${status.layers} Transformer layers`;
+    stageDetails[1].formula = `token[id] + position[t] → vector[${status.embedding_dimension}]`;
+    stageDetails[2].formula = `(causal attention + MLP) × ${status.layers} → context`;
+    stageDetails[3].formula = `final vector → linear head → ${status.vocabulary_size.toLocaleString()} logits`;
     stageDetails[1].output = `${status.embedding_dimension} numbers per token`;
     stageDetails[2].output = `Context after ${status.layers} layers`;
     stageDetails[3].output = `${status.vocabulary_size.toLocaleString()} raw scores`;
@@ -161,19 +172,55 @@ async function loadStatus() {
   }
 }
 
-function activateStage(index) {
-  stages.forEach((stage, stageIndex) => stage.classList.toggle("active", stageIndex === index));
+function activateStage(index, showProgress = false) {
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const previousStageIndex = activeStageIndex;
+  const resetting = reducedMotion || previousStageIndex < 0 || index <= previousStageIndex || index - previousStageIndex > 1;
+  pipeline.classList.toggle("resetting", resetting);
+  signal.classList.toggle("resetting", resetting);
+  activeStageIndex = index;
+  stages.forEach((stage, stageIndex) => {
+    stage.classList.toggle("active", stageIndex === index);
+    stage.classList.toggle("completed", showProgress && stageIndex < index);
+    if (stageIndex === index) stage.setAttribute("aria-current", "step");
+    else stage.removeAttribute("aria-current");
+  });
   const detail = stageDetails[index];
   $("#explainerNumber").textContent = `STEP ${index + 1} OF ${stages.length}`;
   $("#explainerTitle").textContent = detail.title;
+  $("#explainerFormula").textContent = detail.formula;
   $("#explainerCopy").textContent = detail.copy;
   $("#explainerInput").textContent = detail.input;
   $("#explainerOutput").textContent = detail.output;
-  const scene = $("#pipelineScene").getBoundingClientRect();
-  const box = stages[index].getBoundingClientRect();
-  signal.style.left = `${box.left - scene.left + box.width / 2}px`;
-  signal.style.top = `${box.top - scene.top + box.height / 2}px`;
+  const firstCenter = stages[0].offsetTop + stages[0].offsetHeight / 2;
+  const lastCenter = stages.at(-1).offsetTop + stages.at(-1).offsetHeight / 2;
+  const currentCenter = stages[index].offsetTop + stages[index].offsetHeight / 2;
+  const railX = stages[0].offsetLeft + 18;
+  const travelDuration = { fast: "140ms", normal: "480ms", slow: "850ms" }[playbackSpeed.value] || "480ms";
+  pipeline.style.setProperty("--travel-duration", travelDuration);
+  pipeline.style.setProperty("--rail-x", `${railX}px`);
+  pipeline.style.setProperty("--rail-top", `${firstCenter}px`);
+  pipeline.style.setProperty("--rail-total", `${lastCenter - firstCenter}px`);
+  pipeline.style.setProperty("--rail-progress", `${showProgress ? currentCenter - firstCenter : 0}px`);
+  signal.style.setProperty("--travel-duration", travelDuration);
+  const scene = $("#pipelineScene");
+  signal.style.left = `${pipeline.offsetLeft + railX}px`;
+  signal.style.top = `${pipeline.offsetTop + currentCenter}px`;
   signal.style.opacity = "1";
+  if (trace?.playing && index !== previousStageIndex && scene.scrollHeight > scene.clientHeight) {
+    const stageTop = pipeline.offsetTop + stages[index].offsetTop;
+    const stageBottom = stageTop + stages[index].offsetHeight;
+    if (stageTop < scene.scrollTop + 16 || stageBottom > scene.scrollTop + scene.clientHeight - 16) {
+      scene.scrollTo({
+        top: Math.max(0, pipeline.offsetTop + currentCenter - scene.clientHeight / 2),
+        behavior: reducedMotion || playbackSpeed.value === "fast" ? "auto" : "smooth",
+      });
+    }
+  }
+  if (resetting) requestAnimationFrame(() => {
+    pipeline.classList.remove("resetting");
+    signal.classList.remove("resetting");
+  });
 }
 
 function renderEmbeddingEvidence(values, norm, label, tokenId) {
@@ -219,8 +266,7 @@ function renderLayerEvidence(step) {
   const norms = step.layer_norms || [];
   stageEvidence.replaceChildren(makeElement("div", "evidence-label", `Measured output magnitudes · ${norms.length} layers`));
   renderBlockDiagram();
-  stageEvidence.append(makeElement("p", "evidence-note", "The boxes show the actual operation order inside one block. The values below are measured from this run."));
-  stageEvidence.append(makeElement("p", "evidence-note", "Each bar measures the last context token after that Transformer layer."));
+  stageEvidence.append(makeElement("p", "evidence-note", `This block repeats ${architecture.layers} times. Bars show the last token's output magnitude after each layer.`));
   const ceiling = Math.max(...norms, 0.01);
   const list = makeElement("div", "layer-list", "");
   norms.forEach((norm, index) => {
@@ -386,7 +432,7 @@ function renderCursor() {
   const generatedCount = event.kind === "prompt"
     ? 0
     : event.tokenIndex + (event.stage === 5 ? 1 : 0);
-  activateStage(event.kind === "prompt" ? 0 : event.stage);
+  activateStage(event.kind === "prompt" ? 0 : event.stage, event.kind === "generation");
   renderStageEvidence(event, result);
   renderTokens(result, promptCount, generatedCount, event.kind === "prompt" ? event.promptIndex : -1);
   renderAnswer(result, generatedCount, atEnd);

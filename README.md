@@ -1,8 +1,37 @@
 # JeePeeTee
 
-JeePeeTee is a small decoder-only Transformer built from scratch in PyTorch. The
-repository deliberately separates three concerns: preparing text, training a causal
-language model, and generating text from a saved checkpoint.
+JeePeeTee is a small LLM that I built in Python , PyTorch to learn how
+language models work in practice and strengthen my AI/ML engineering skills. The
+project covers the path from preparing text and training a causal language model to
+generating text from a saved checkpoint. It is a learning project, not a production
+assistant or a claim of general-purpose intelligence.
+
+## Explore and contribute
+
+If you are learning AI or ML, JeePeeTee is an opportunity to explore how a small
+language model works and build practical skills alongside me. Try the model and its
+visual interface, follow the path from tokens to predictions, and experiment with
+the code and tests.
+
+I would love to work with people who want to learn and improve the project together.
+You can help with documentation, tests, evaluations, data preparation, or model
+experiments while developing your own AI/ML skills. If you are interested, message
+me about joining as a contributor. We can discuss where you would like to help,
+and I can add you to the project so we can keep learning and building it together.
+
+## How I built it
+
+- **PyTorch** runs the embeddings, causal attention, Transformer blocks, loss,
+  backpropagation and optimization. The same code supports CPU and, when available,
+  CUDA.
+- **Hugging Face `tokenizers`** trains this project's own byte-level BPE tokenizer;
+  it does not load a pretrained tokenizer.
+- **Hugging Face `datasets` and TinyStories** provide the current story corpus. The
+  data pipeline prepares separate training and validation sequences for next-token
+  prediction.
+- **Python tests and checkpoints** help verify the computations and make training
+  runs reproducible. A small HTML/CSS/JavaScript interface displays measurements
+  from the Python model to help explain inference; JavaScript does not run the model.
 
 ## Run the current model
 
@@ -68,6 +97,15 @@ PyTorch checkpoint; a public live demo requires a separate Python inference host
 The active checkpoint has 15,666,048 parameters, a 4,096-token vocabulary and a
 256-token context. It was trained on 25,000 TinyStories training examples, with 500
 held-out validation examples.
+
+This is a modest baseline chosen for the compute available to me. TinyStories helps
+the model learn simple English story patterns, but this checkpoint is not expected to
+answer arbitrary questions accurately. More carefully selected, properly licensed
+data could expand what a future checkpoint learns. A larger model might also help,
+provided it has enough suitable data, compute and evaluation; increasing the parameter
+count alone does not guarantee better answers. Typing new information into the prompt
+does **not** train the model: incorporating a new dataset requires data preparation,
+training and validation of a new checkpoint.
 
 ## Runtime flow
 

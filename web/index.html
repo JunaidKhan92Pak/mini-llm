@@ -6,7 +6,7 @@
     <meta name="description" content="Run JeePeeTee and watch how a GPT predicts each token." />
     <title>JeePeeTee Learning Lab</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231877F2'/%3E%3Cpath d='M20 15h25v9H30v9h14v9H30c0 7-4 10-12 10h-3v-9h2c2 0 3-1 3-3z' fill='white'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="/styles.css?v=10" />
+    <link rel="stylesheet" href="/styles.css?v=12" />
   </head>
   <body>
     <main class="shell">
@@ -23,8 +23,8 @@
 
       <section class="hero" aria-labelledby="workspaceTitle">
         <div class="hero-copy">
-          <p class="eyebrow">LIVE LOCAL GPT VISUALIZER</p>
-          <h1 id="workspaceTitle">Meet JeePeeTee.<br /><span>A small GPT you can explore.</span></h1>
+          <p class="eyebrow">LIVE LOCAL LLM VISUALIZER</p>
+          <h1 id="workspaceTitle">Meet JeePeeTee.<br /><span>A small LLM you can explore.</span></h1>
           <p class="intro">I built this GPT-style language model from scratch. Give it a story opening, then watch how it predicts each new text piece. Its current training focuses on TinyStories, so it works best as a story completer.</p>
         </div>
         <div class="model-facts" id="modelFacts" aria-label="Model architecture">
@@ -164,6 +164,6 @@
         <p class="truth-note"><strong>What is measured:</strong> token IDs, embedding samples, layer output magnitudes, attention weights for head 1 of the final layer, raw vocabulary scores, and next-token probabilities come from the local checkpoint. The 3D shapes explain the computation order. Attention weights show one connection pattern; they do not explain the model’s complete reasoning. This is inference, not training.</p>
       </section>
     </main>
-    <script src="/app.js?v=10" defer></script>
+    <script src="/app.js?v=12" defer></script>
   </body>
 </html>

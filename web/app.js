@@ -26,6 +26,7 @@ const stageToken = $("#stageToken");
 const stageEvidence = $("#stageEvidence");
 const signal = $("#signal");
 const stages = [...document.querySelectorAll(".stage")];
+const pipeline = $(".pipeline");
 const assemblyPrompt = $("#assemblyPrompt");
 const assemblyCompletion = $("#assemblyCompletion");
 const typingCursor = $("#typingCursor");
@@ -35,6 +36,7 @@ const traceProgressFill = $("#traceProgressFill");
 
 let trace = null;
 let traceTimer = null;
+let activeStageIndex = -1;
 let architecture = { embedding_dimension: 384, layers: 7, vocabulary_size: 4096 };
 
 const stageDetails = [
@@ -161,19 +163,54 @@ async function loadStatus() {
   }
 }
 
-function activateStage(index) {
-  stages.forEach((stage, stageIndex) => stage.classList.toggle("active", stageIndex === index));
+function activateStage(index, showProgress = false) {
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const previousStageIndex = activeStageIndex;
+  const resetting = reducedMotion || previousStageIndex < 0 || index <= previousStageIndex || index - previousStageIndex > 1;
+  pipeline.classList.toggle("resetting", resetting);
+  signal.classList.toggle("resetting", resetting);
+  activeStageIndex = index;
+  stages.forEach((stage, stageIndex) => {
+    stage.classList.toggle("active", stageIndex === index);
+    stage.classList.toggle("completed", showProgress && stageIndex < index);
+    if (stageIndex === index) stage.setAttribute("aria-current", "step");
+    else stage.removeAttribute("aria-current");
+  });
   const detail = stageDetails[index];
   $("#explainerNumber").textContent = `STEP ${index + 1} OF ${stages.length}`;
   $("#explainerTitle").textContent = detail.title;
   $("#explainerCopy").textContent = detail.copy;
   $("#explainerInput").textContent = detail.input;
   $("#explainerOutput").textContent = detail.output;
-  const scene = $("#pipelineScene").getBoundingClientRect();
-  const box = stages[index].getBoundingClientRect();
-  signal.style.left = `${box.left - scene.left + box.width / 2}px`;
-  signal.style.top = `${box.top - scene.top + box.height / 2}px`;
+  const firstCenter = stages[0].offsetTop + stages[0].offsetHeight / 2;
+  const lastCenter = stages.at(-1).offsetTop + stages.at(-1).offsetHeight / 2;
+  const currentCenter = stages[index].offsetTop + stages[index].offsetHeight / 2;
+  const railX = stages[0].offsetLeft + 18;
+  const travelDuration = { fast: "140ms", normal: "480ms", slow: "850ms" }[playbackSpeed.value] || "480ms";
+  pipeline.style.setProperty("--travel-duration", travelDuration);
+  pipeline.style.setProperty("--rail-x", `${railX}px`);
+  pipeline.style.setProperty("--rail-top", `${firstCenter}px`);
+  pipeline.style.setProperty("--rail-total", `${lastCenter - firstCenter}px`);
+  pipeline.style.setProperty("--rail-progress", `${showProgress ? currentCenter - firstCenter : 0}px`);
+  signal.style.setProperty("--travel-duration", travelDuration);
+  const scene = $("#pipelineScene");
+  signal.style.left = `${pipeline.offsetLeft + railX}px`;
+  signal.style.top = `${pipeline.offsetTop + currentCenter}px`;
   signal.style.opacity = "1";
+  if (trace?.playing && index !== previousStageIndex && scene.scrollHeight > scene.clientHeight) {
+    const stageTop = pipeline.offsetTop + stages[index].offsetTop;
+    const stageBottom = stageTop + stages[index].offsetHeight;
+    if (stageTop < scene.scrollTop + 16 || stageBottom > scene.scrollTop + scene.clientHeight - 16) {
+      scene.scrollTo({
+        top: Math.max(0, pipeline.offsetTop + currentCenter - scene.clientHeight / 2),
+        behavior: reducedMotion || playbackSpeed.value === "fast" ? "auto" : "smooth",
+      });
+    }
+  }
+  if (resetting) requestAnimationFrame(() => {
+    pipeline.classList.remove("resetting");
+    signal.classList.remove("resetting");
+  });
 }
 
 function renderEmbeddingEvidence(values, norm, label, tokenId) {
@@ -386,7 +423,7 @@ function renderCursor() {
   const generatedCount = event.kind === "prompt"
     ? 0
     : event.tokenIndex + (event.stage === 5 ? 1 : 0);
-  activateStage(event.kind === "prompt" ? 0 : event.stage);
+  activateStage(event.kind === "prompt" ? 0 : event.stage, event.kind === "generation");
   renderStageEvidence(event, result);
   renderTokens(result, promptCount, generatedCount, event.kind === "prompt" ? event.promptIndex : -1);
   renderAnswer(result, generatedCount, atEnd);

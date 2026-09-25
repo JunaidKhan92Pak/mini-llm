@@ -10,7 +10,6 @@ const responseCopy = $("#responseCopy");
 const responseMeta = $("#responseMeta");
 const finishBadge = $("#finishBadge");
 const modelState = $("#modelState");
-const tokenStream = $("#tokenStream");
 const promptTextArray = $("#promptTextArray");
 const promptIdArray = $("#promptIdArray");
 const generatedTextArray = $("#generatedTextArray");
@@ -37,6 +36,7 @@ const traceProgressFill = $("#traceProgressFill");
 let trace = null;
 let traceTimer = null;
 let activeStageIndex = -1;
+let activeStageProgress = false;
 let architecture = { embedding_dimension: 384, layers: 7, vocabulary_size: 4096 };
 
 const stageDetails = [
@@ -110,24 +110,12 @@ function renderFlow(items) {
   stageEvidence.append(flow);
 }
 
-function renderBlockDiagram() {
-  const diagram = makeElement("div", "block-diagram", "");
-  [
-    ["01", "Norm → Q/K/V → causal attention"],
-    ["02", "+ residual"],
-    ["03", "Norm → GELU MLP"],
-    ["04", "+ residual"],
-  ].forEach(([number, label], index) => {
-    const operation = makeElement("div", `block-operation${index === 0 ? " strong" : ""}`, "");
-    operation.append(makeElement("b", "", number), document.createTextNode(label));
-    diagram.append(operation);
-  });
-  stageEvidence.append(diagram);
-}
-
 function eventLabel(event, result) {
   if (event.kind === "prompt") {
     const token = result.prompt_tokens[event.promptIndex];
+    if (event.stage === 1) {
+      return `Prompt ${event.promptIndex + 1}: token + position → ${token.embedding_vector.length}D embedding`;
+    }
     return `Prompt ${event.promptIndex + 1}: ${visibleToken(token.text || token.piece)} → ID ${token.id} · position ${token.position}`;
   }
   const step = result.steps[event.tokenIndex];
@@ -135,7 +123,7 @@ function eventLabel(event, result) {
   switch (event.stage) {
     case 0: return `${prefix}: ${step.context_token_count} context IDs enter the model`;
     case 1: return `${prefix}: ${architecture.embedding_dimension}D embedding · magnitude ${Number(step.embedding_norm).toFixed(2)}`;
-    case 2: return `${prefix}: ${step.layer_norms.length} causal layers · final magnitude ${Number(step.layer_norms.at(-1)).toFixed(2)}`;
+    case 2: return `${prefix}: layer ${(event.layerIndex || 0) + 1}/${step.layer_details?.length || architecture.layers} · normalize → attend → add → normalize → MLP → add`;
     case 3: return `${prefix}: linear projection → ${architecture.vocabulary_size.toLocaleString()} raw logits`;
     case 4: return `${prefix}: top chance ${visibleToken(step.candidates[0]?.token || "")} ${percent(step.candidates[0]?.probability || 0)}`;
     default: return `${prefix}: chose ${visibleToken(step.selected_token)} · ID ${step.selected_token_id} · ${percent(step.selected_probability)}`;
@@ -179,6 +167,7 @@ function activateStage(index, showProgress = false) {
   pipeline.classList.toggle("resetting", resetting);
   signal.classList.toggle("resetting", resetting);
   activeStageIndex = index;
+  activeStageProgress = showProgress;
   stages.forEach((stage, stageIndex) => {
     stage.classList.toggle("active", stageIndex === index);
     stage.classList.toggle("completed", showProgress && stageIndex < index);
@@ -192,108 +181,298 @@ function activateStage(index, showProgress = false) {
   $("#explainerCopy").textContent = detail.copy;
   $("#explainerInput").textContent = detail.input;
   $("#explainerOutput").textContent = detail.output;
-  const firstCenter = stages[0].offsetTop + stages[0].offsetHeight / 2;
-  const lastCenter = stages.at(-1).offsetTop + stages.at(-1).offsetHeight / 2;
-  const currentCenter = stages[index].offsetTop + stages[index].offsetHeight / 2;
-  const railX = stages[0].offsetLeft + 18;
-  const travelDuration = { fast: "140ms", normal: "480ms", slow: "850ms" }[playbackSpeed.value] || "480ms";
-  pipeline.style.setProperty("--travel-duration", travelDuration);
-  pipeline.style.setProperty("--rail-x", `${railX}px`);
-  pipeline.style.setProperty("--rail-top", `${firstCenter}px`);
-  pipeline.style.setProperty("--rail-total", `${lastCenter - firstCenter}px`);
-  pipeline.style.setProperty("--rail-progress", `${showProgress ? currentCenter - firstCenter : 0}px`);
-  signal.style.setProperty("--travel-duration", travelDuration);
-  const scene = $("#pipelineScene");
-  signal.style.left = `${pipeline.offsetLeft + railX}px`;
-  signal.style.top = `${pipeline.offsetTop + currentCenter}px`;
-  signal.style.opacity = "1";
-  if (trace?.playing && index !== previousStageIndex && scene.scrollHeight > scene.clientHeight) {
-    const stageTop = pipeline.offsetTop + stages[index].offsetTop;
-    const stageBottom = stageTop + stages[index].offsetHeight;
-    if (stageTop < scene.scrollTop + 16 || stageBottom > scene.scrollTop + scene.clientHeight - 16) {
-      scene.scrollTo({
-        top: Math.max(0, pipeline.offsetTop + currentCenter - scene.clientHeight / 2),
-        behavior: reducedMotion || playbackSpeed.value === "fast" ? "auto" : "smooth",
-      });
-    }
-  }
+  updatePipelinePosition();
   if (resetting) requestAnimationFrame(() => {
     pipeline.classList.remove("resetting");
     signal.classList.remove("resetting");
   });
 }
 
-function renderEmbeddingEvidence(values, norm, label, tokenId) {
-  stageEvidence.replaceChildren(makeElement("div", "evidence-label", label));
-  if (!values?.length) return;
-  renderFlow([["Token ID", String(tokenId)], ["Learned tables", "token + position"], ["Vector", `${architecture.embedding_dimension} values`]]);
-  stageEvidence.append(makeElement("p", "evidence-note", `First ${values.length} of ${architecture.embedding_dimension} coordinates · vector magnitude ${Number(norm).toFixed(2)}`));
-  const chart = makeElement("div", "embedding-chart", "");
-  const ceiling = Math.max(...values.map((value) => Math.abs(value)), 0.01);
-  values.forEach((value, index) => {
-    const column = makeElement("div", "embedding-column", "");
-    const bar = makeElement("span", `embedding-bar ${value < 0 ? "negative" : "positive"}`, "");
-    bar.style.height = `${Math.max(6, Math.abs(value) / ceiling * 48)}px`;
-    bar.title = `Dimension ${index + 1}: ${Number(value).toFixed(3)}`;
-    column.append(bar, makeElement("small", "embedding-value", Number(value).toFixed(2)));
-    chart.append(column);
-  });
-  stageEvidence.append(chart);
+function updatePipelinePosition() {
+  const index = Math.max(0, activeStageIndex);
+  const firstCenter = stages[0].offsetTop + stages[0].offsetHeight / 2;
+  const lastCenter = stages.at(-1).offsetTop + stages.at(-1).offsetHeight / 2;
+  const currentCenter = stages[index].offsetTop + stages[index].offsetHeight / 2;
+  const marker = getComputedStyle(stages[0], "::before");
+  const railX = stages[0].offsetLeft + stages[0].clientLeft + parseFloat(marker.left) + parseFloat(marker.width) / 2;
+  const travelDuration = { fast: "140ms", normal: "480ms", slow: "850ms" }[playbackSpeed.value] || "480ms";
+  pipeline.style.setProperty("--travel-duration", travelDuration);
+  pipeline.style.setProperty("--rail-x", `${railX}px`);
+  pipeline.style.setProperty("--rail-top", `${firstCenter}px`);
+  pipeline.style.setProperty("--rail-total", `${lastCenter - firstCenter}px`);
+  pipeline.style.setProperty("--rail-progress", `${activeStageProgress ? currentCenter - firstCenter : 0}px`);
+  signal.style.setProperty("--travel-duration", travelDuration);
+  signal.style.left = `${pipeline.offsetLeft + railX}px`;
+  signal.style.top = `${pipeline.offsetTop + currentCenter}px`;
+  signal.style.opacity = activeStageIndex < 0 ? "0" : "1";
 }
 
-function renderAttention(focus) {
+function renderEmbeddingEvidence(detail, label, tokenId) {
+  stageEvidence.replaceChildren(makeElement("div", "evidence-label", label));
+  const values = detail.embedding_vector;
+  if (!values?.length) return;
+  renderFlow([["Token ID", String(tokenId)], ["Position", String(detail.position)], ["Input vector", `${values.length} numbers`]]);
+  stageEvidence.append(makeElement("p", "evidence-note", "The model looks up a learned vector for the token ID and another for its position. It adds them coordinate by coordinate before the Transformer."));
+
+  const calculation = makeElement("div", "embedding-calculation", "");
+  [
+    ["Token lookup", detail.token_embedding_preview],
+    ["+ Position lookup", detail.position_embedding_preview],
+    ["= Input embedding", values.slice(0, 8)],
+  ].forEach(([name, preview]) => {
+    const row = makeElement("div", "embedding-calculation-row", "");
+    row.append(makeElement("strong", "", name), makeElement("code", "", `[${preview.map((value) => Number(value).toFixed(2)).join(", ")}]`));
+    calculation.append(row);
+  });
+  stageEvidence.append(calculation);
+  stageEvidence.append(makeElement("p", "evidence-note", `The calculation above shows the first 8 coordinates. Below are all ${values.length} coordinates of this token's input embedding. Vector magnitude: ${Number(detail.embedding_norm).toFixed(2)}.`));
+
+  const legend = makeElement("div", "embedding-grid-legend", "Light blue = negative · white = near zero · dark blue = positive");
+  const grid = makeElement("div", "embedding-dimension-grid", "");
+  const readout = makeElement("div", "embedding-coordinate-readout", "Select a square to read its exact dimension and value.");
+  const scale = Math.max(...values.map((value) => Math.abs(value)), 0.01);
+  values.forEach((value, index) => {
+    const intensity = Math.min(Math.abs(value) / scale, 1);
+    const target = value < 0 ? [105, 165, 223] : [24, 119, 242];
+    const channels = target.map((channel) => Math.round(255 - (255 - channel) * intensity));
+    const cell = makeElement("button", "embedding-dimension", "");
+    cell.type = "button";
+    cell.style.backgroundColor = `rgb(${channels.join(",")})`;
+    cell.title = `Dimension ${index + 1}: ${Number(value).toFixed(5)}`;
+    cell.setAttribute("aria-label", cell.title);
+    cell.addEventListener("click", () => {
+      readout.textContent = `Dimension ${index + 1} of ${values.length}: ${Number(value).toFixed(5)}`;
+    });
+    grid.append(cell);
+  });
+  stageEvidence.append(legend, grid, readout);
+  const raw = makeElement("details", "embedding-raw", "");
+  raw.append(makeElement("summary", "", "View the full numeric vector"), makeElement("code", "", `[${values.map((value) => Number(value).toFixed(4)).join(", ")}]`));
+  stageEvidence.append(raw);
+}
+
+function renderAttention(focus, parent = stageEvidence) {
   if (!focus?.length) return;
-  stageEvidence.append(makeElement("div", "evidence-label attention-label", "Final layer · attention head 1 · strongest context links"));
-  stageEvidence.append(makeElement("p", "evidence-note", "For the last context position, these are the five largest attention weights in one head."));
+  parent.append(makeElement("p", "evidence-note", "Head 1 · last context position · five strongest links. The weights show where this head mixes information; the other heads have their own weights."));
   const list = makeElement("div", "attention-list", "");
   focus.forEach((item) => {
     const row = makeElement("div", "attention-row", "");
     const track = makeElement("span", "attention-track", "");
     const fill = makeElement("span", "attention-fill", "");
-    fill.style.width = `${Math.max(item.probability * 100, 2)}%`;
+    fill.style.width = `${item.probability * 100}%`;
     track.append(fill);
     row.append(
-      makeElement("span", "attention-token", `${item.position}: ${visibleToken(item.token)}`),
+      makeElement("span", "attention-token", `${item.position}: ${visibleToken(item.token) || "control token"}`),
       track,
       makeElement("strong", "", percent(item.probability)),
     );
     list.append(row);
   });
-  stageEvidence.append(list);
+  parent.append(list);
 }
 
-function renderLayerEvidence(step) {
-  const norms = step.layer_norms || [];
-  stageEvidence.replaceChildren(makeElement("div", "evidence-label", `Measured output magnitudes · ${norms.length} layers`));
-  renderBlockDiagram();
-  stageEvidence.append(makeElement("p", "evidence-note", `This block repeats ${architecture.layers} times. Bars show the last token's output magnitude after each layer.`));
-  const ceiling = Math.max(...norms, 0.01);
-  const list = makeElement("div", "layer-list", "");
-  norms.forEach((norm, index) => {
-    const row = makeElement("div", "layer-row", "");
-    const track = makeElement("span", "layer-track", "");
-    const fill = makeElement("span", "layer-fill", "");
-    fill.style.width = `${Math.max(3, norm / ceiling * 100)}%`;
-    track.append(fill);
-    row.append(makeElement("span", "", `L${index + 1}`), track, makeElement("strong", "", Number(norm).toFixed(1)));
-    list.append(row);
+function renderLayerEvidence(step, layerIndex = 0) {
+  const layers = step.layer_details || [];
+  if (!layers.length) {
+    stageEvidence.append(makeElement("p", "evidence-note", "Restart the local server and generate again to capture the operations inside each layer."));
+    return;
+  }
+  const layer = layers[layerIndex];
+  const measured = Object.fromEntries(layer.activations.map((item) => [item.name, item]));
+  const layerRail = makeElement("div", "layer-rail", "");
+  layerRail.setAttribute("aria-label", "Choose a Transformer layer");
+  layers.forEach((item, index) => {
+    if (index) layerRail.append(makeElement("span", "layer-connector", "→"));
+    const button = makeElement("button", `layer-choice${index === layerIndex ? " active" : ""}`, `L${item.index}`);
+    button.type = "button";
+    button.setAttribute("aria-pressed", String(index === layerIndex));
+    button.title = `Inspect layer ${item.index}`;
+    button.addEventListener("click", () => {
+      pauseTrace();
+      const cursor = trace.events.findIndex((event) => event.kind === "generation" && event.tokenIndex === step.index && event.stage === 2 && event.layerIndex === index);
+      if (cursor >= 0) moveTo(cursor);
+    });
+    layerRail.append(button);
   });
-  stageEvidence.append(list);
-  renderAttention(step.attention_focus);
+  stageEvidence.append(layerRail);
+  const heading = makeElement("div", "operation-heading", "");
+  heading.append(makeElement("strong", "", `Inside layer ${layer.index}`), makeElement("span", "", `[1, ${step.context_token_count}, ${measured.input.width}]`));
+  stageEvidence.append(heading, makeElement("p", "evidence-note", "Follow the path downward. Values on the right are measured vector magnitudes for the last context token; a larger number does not mean a better answer."));
+
+  const groups = [
+    {
+      carry: "Carry the original input to the first +",
+      operations: [
+        ["attention_norm", "1", "Normalize", "LayerNorm balances the input coordinates."],
+        ["attention", "2", "Causal attention", `${architecture.heads} heads mix the current token with earlier tokens. Future positions are masked.`],
+        ["attention_residual", "+", "Add the original input", "Original input + attention update → first residual."],
+      ],
+    },
+    {
+      carry: "Carry the first residual to the second +",
+      operations: [
+        ["feed_forward_norm", "3", "Normalize again", "Prepare the first residual for the feed-forward network."],
+        ["feed_forward", "4", "Feed-forward network", `${measured.input.width} → ${architecture.feed_forward_dimension} → ${measured.output.width} · Linear → GELU → Linear.`],
+        ["output", "+", "Add the first residual", "First residual + feed-forward update → layer output."],
+      ],
+    },
+  ];
+  groups.forEach((group) => {
+    const path = makeElement("div", "residual-path", "");
+    path.append(makeElement("div", "residual-caption", group.carry));
+    const flow = makeElement("ol", "operation-flow", "");
+    group.operations.forEach(([key, marker, title, explanation]) => {
+      const row = makeElement("li", `operation-row${marker === "+" ? " addition" : ""}`, "");
+      const copy = makeElement("div", "operation-copy", "");
+      copy.append(makeElement("strong", "", title), makeElement("p", "", explanation));
+      const metric = makeElement("div", "operation-metric", "");
+      metric.append(makeElement("small", "", "MAGNITUDE"), makeElement("strong", "", Number(measured[key].norm).toFixed(2)));
+      row.append(makeElement("span", "operation-marker", marker), copy, metric);
+      flow.append(row);
+    });
+    path.append(flow);
+    stageEvidence.append(path);
+  });
+  stageEvidence.append(makeElement("div", "vector-exit", layerIndex < layers.length - 1
+    ? `↓ This layer's output becomes layer ${layer.index + 1}'s input.`
+    : "↓ Final layer output goes to the vocabulary scoring step."));
+
+  const attention = makeElement("details", "operation-details", "");
+  attention.append(makeElement("summary", "", "Look inside attention"));
+  attention.append(makeElement("p", "evidence-note", "Learned projections form queries (Q), keys (K) and values (V). Q·K scores are scaled and masked, softmax turns them into weights, and the weights mix V. The heads are then merged and projected."));
+  renderAttention(layer.attention_focus, attention);
+  const raw = makeElement("details", "operation-details", "");
+  raw.append(makeElement("summary", "", "Inspect measured vectors · first 8 coordinates"));
+  layer.activations.forEach((item) => {
+    const row = makeElement("div", "activation-values", "");
+    row.append(makeElement("span", "", item.name.replaceAll("_", " ")), makeElement("code", "", `[${item.preview.map((value) => Number(value).toFixed(3)).join(", ")}]`));
+    raw.append(row);
+  });
+  stageEvidence.append(attention, raw);
 }
 
 function renderScoreEvidence(step) {
   stageEvidence.replaceChildren(makeElement("div", "evidence-label", "Final normalization → linear projection"));
   renderFlow([["Context vector", `${architecture.embedding_dimension} values`], ["Linear head", "matrix multiply"], ["Raw logits", `${architecture.vocabulary_size.toLocaleString()} scores`]]);
-  stageEvidence.append(makeElement("div", "projection", `${architecture.embedding_dimension} values → ${architecture.vocabulary_size.toLocaleString()} raw scores`));
   if (step.projection_input_norm != null) {
-    stageEvidence.append(makeElement("p", "evidence-note", `Vector magnitude after final normalization: ${Number(step.projection_input_norm).toFixed(2)}. Raw scores below are before repetition and sampling adjustments.`));
+    stageEvidence.append(makeElement("p", "evidence-note", `After final LayerNorm, the last token's vector has magnitude ${Number(step.projection_input_norm).toFixed(2)}. The learned output matrix gives every vocabulary token a score.`));
   }
+  stageEvidence.append(makeElement("div", "evidence-label", "Raw scores for the candidate tokens"));
+  stageEvidence.append(makeElement("p", "evidence-note", "Logits can be negative or positive. They become probabilities in the next step. These are the candidates shown by the decoder, before its adjustments."));
   const list = makeElement("div", "score-list", "");
-  step.candidates.forEach((candidate) => {
-    list.append(makeElement("div", "score-row", `${visibleToken(candidate.token)} · ID ${candidate.token_id}  ${Number(candidate.raw_logit).toFixed(2)}`));
+  const scale = Math.max(...step.candidates.map((candidate) => Math.abs(candidate.raw_logit)), 0.01);
+  [...step.candidates].sort((left, right) => right.raw_logit - left.raw_logit).forEach((candidate) => {
+    const row = makeElement("div", "score-row", "");
+    const track = makeElement("span", "score-track", "");
+    const fill = makeElement("span", `score-fill${candidate.raw_logit < 0 ? " negative" : ""}`, "");
+    const width = Math.abs(candidate.raw_logit) / scale * 50;
+    fill.style.width = `${width}%`;
+    fill.style.left = `${candidate.raw_logit < 0 ? 50 - width : 50}%`;
+    track.append(fill);
+    row.append(makeElement("span", "", candidateText(candidate)), track, makeElement("strong", "", Number(candidate.raw_logit).toFixed(2)));
+    list.append(row);
   });
-  stageEvidence.append(list);
+  stageEvidence.append(list, makeElement("p", "chart-axis-note", "Negative ← 0 → Positive"));
+}
+
+function candidateText(candidate) {
+  if (candidate.token_id === architecture.eos_token_id) return "<EOS>";
+  return visibleToken(candidate.token) || `ID ${candidate.token_id}`;
+}
+
+function renderTokenEvidence(event, result, pageStart) {
+  const isPrompt = event.kind === "prompt";
+  const step = isPrompt ? null : result.steps[event.tokenIndex];
+  const ids = isPrompt ? result.prompt_tokens.map((token) => token.id) : step.context_token_ids;
+  const tokens = isPrompt ? result.prompt_tokens : [
+    ...result.prompt_tokens,
+    ...result.steps.slice(0, event.tokenIndex).map((item) => ({ id: item.selected_token_id, text: item.selected_token })),
+  ].slice(-ids.length);
+  const activeIndex = isPrompt ? event.promptIndex : ids.length - 1;
+  const pageSize = 8;
+  const start = pageStart ?? Math.floor(activeIndex / pageSize) * pageSize;
+  const end = Math.min(start + pageSize, ids.length);
+  const inputText = isPrompt ? result.prompt : result.steps[event.tokenIndex - 1]?.combined_text || result.prompt;
+  if (!isPrompt) {
+    $("#explainerFormula").textContent = "prompt IDs + generated IDs → model input";
+    $("#explainerCopy").textContent = "The prompt is tokenized once. Each generated ID is appended directly; the text is not tokenized again for each prediction.";
+    $("#explainerInput").textContent = "Current context IDs";
+    $("#explainerOutput").textContent = `[1, ${ids.length}] input`;
+  }
+  stageEvidence.replaceChildren();
+  const source = makeElement("section", "token-process", "");
+  source.append(
+    makeElement("div", "evidence-label", isPrompt ? "01 · Text sent to the tokenizer" : "01 · Context so far"),
+    makeElement("div", "token-source", inputText),
+  );
+  const mapping = makeElement("section", "token-process", "");
+  mapping.append(
+    makeElement("div", "evidence-label", "02 · Text pieces and vocabulary IDs"),
+    makeElement("p", "evidence-note", "BPE pieces can be words, word parts, or punctuation. ␠ marks a space; ↵ marks a newline. Position is the place in this input; ID is the entry in the vocabulary."),
+  );
+  const table = makeElement("table", "token-mapping", "");
+  table.setAttribute("aria-label", "Actual text pieces and vocabulary IDs by input position");
+  const header = table.createTHead().insertRow();
+  ["Position", "Text piece", "Token ID"].forEach((label) => {
+    const cell = makeElement("th", "", label);
+    cell.scope = "col";
+    header.append(cell);
+  });
+  const body = table.createTBody();
+  for (let index = start; index < end; index += 1) {
+    const token = tokens[index];
+    const piece = visibleToken(token.text || token.piece);
+    const row = body.insertRow();
+    row.classList.toggle("current-token", index === activeIndex);
+    row.insertCell().textContent = String(index);
+    const pieceCell = row.insertCell();
+    if (isPrompt) {
+      const button = makeElement("button", "token-select", piece);
+      button.type = "button";
+      button.setAttribute("aria-label", `Inspect position ${index}, piece ${piece}, ID ${ids[index]}`);
+      button.setAttribute("aria-pressed", String(index === activeIndex));
+      button.addEventListener("click", () => { pauseTrace(); moveTo(index * 2); });
+      pieceCell.append(button);
+    } else {
+      pieceCell.append(makeElement("code", "", piece));
+    }
+    row.insertCell().textContent = String(ids[index]);
+  }
+  mapping.append(table);
+  if (ids.length > pageSize) {
+    const pagination = makeElement("div", "mapping-pagination", "");
+    pagination.append(makeElement("span", "", `Positions ${start}–${end - 1} of ${ids.length} tokens`));
+    [["Earlier", start - pageSize, start === 0], ["Later", start + pageSize, end === ids.length]].forEach(([label, offset, disabled]) => {
+      const button = makeElement("button", "secondary-button", label);
+      button.type = "button";
+      button.disabled = disabled;
+      button.addEventListener("click", () => { pauseTrace(); renderTokenEvidence(event, result, offset); });
+      pagination.append(button);
+    });
+    mapping.append(pagination);
+  }
+  mapping.append(makeElement("p", "evidence-note", isPrompt
+    ? "<BOS> is added at the start of the prompt. Select any piece to follow that token."
+    : "These are the IDs already in the context. The highlighted last token is used for the next prediction."));
+  const input = makeElement("section", "token-process", "");
+  const tensor = makeElement("code", "token-input-tensor", JSON.stringify([ids]));
+  input.append(
+    makeElement("div", "evidence-label", "03 · Integer input to the model"),
+    tensor,
+    makeElement("p", "evidence-note", `Shape [1, ${ids.length}]: 1 sequence with ${ids.length} tokens. Each ID selects a learned embedding in the next step.`),
+  );
+  const next = makeElement("button", "secondary-button token-embedding-link", isPrompt
+    ? `See position ${activeIndex}'s embedding →`
+    : "See the last context token's embedding →");
+  next.type = "button";
+  next.addEventListener("click", () => {
+    pauseTrace();
+    const cursor = trace.events.findIndex((item) => item.kind === event.kind && item.stage === 1 &&
+      (isPrompt ? item.promptIndex === event.promptIndex : item.tokenIndex === event.tokenIndex));
+    moveTo(cursor);
+  });
+  input.append(next);
+  stageEvidence.append(source, mapping, input);
 }
 
 function renderStageEvidence(event, result) {
@@ -301,89 +480,69 @@ function renderStageEvidence(event, result) {
   if (event.kind === "prompt") {
     const token = result.prompt_tokens[event.promptIndex];
     if (event.stage === 1) {
-      renderEmbeddingEvidence(token.embedding_preview, token.embedding_norm, `Prompt token ${event.promptIndex + 1} · ID ${token.id}`, token.id);
+      renderEmbeddingEvidence(token, `Prompt token ${event.promptIndex + 1} · ${visibleToken(token.text || token.piece)}`, token.id);
       return;
     }
     if (event.stage > 1) {
       stageEvidence.append(makeElement("p", "evidence-note", "Inspect prompt only computes token IDs and embeddings. Click Generate to run the Transformer and see later measured stages."));
       return;
     }
-    stageEvidence.append(makeElement("div", "evidence-label", "Actual prompt tokenization"));
-    renderFlow([["Text piece", visibleToken(token.text || token.piece)], ["BPE vocabulary", "lookup"], ["Token ID", String(token.id)]]);
-    stageEvidence.append(makeElement("p", "evidence-note", `Position ${token.position} in the input sequence.${token.position === 0 ? " This is the BOS (beginning-of-sequence) token." : ""}`));
+    renderTokenEvidence(event, result);
     return;
   }
   const step = result.steps[event.tokenIndex];
   if (event.stage === 0) {
-    stageEvidence.append(makeElement("div", "evidence-label", "Context IDs sent to the model"));
-    stageEvidence.append(makeElement("p", "evidence-note", `${step.context_token_count} IDs, including the prompt and earlier generated tokens.`));
-    renderFlow([["Prompt + output so far", `${step.context_token_count} pieces`], ["BPE vocabulary", "IDs"], ["Model input", `[1, ${step.context_token_count}]`]]);
-    stageEvidence.append(makeElement("div", "id-sequence", step.context_token_ids.slice(-24).join(" · ")));
-    if (step.context_token_ids.length > 24) {
-      stageEvidence.append(makeElement("p", "evidence-note", "Showing the last 24 IDs of this context."));
-    }
+    renderTokenEvidence(event, result);
   } else if (event.stage === 1) {
-    renderEmbeddingEvidence(step.embedding_preview, step.embedding_norm, "Last context token · token + position vector", step.context_token_ids.at(-1));
+    renderEmbeddingEvidence(
+      { ...step.embedding_components, embedding_norm: step.embedding_norm },
+      "Last context token · token + position vector",
+      step.context_token_ids.at(-1),
+    );
   } else if (event.stage === 2) {
-    renderLayerEvidence(step);
+    renderLayerEvidence(step, event.layerIndex || 0);
   } else if (event.stage === 3) {
     renderScoreEvidence(step);
   } else if (event.stage === 4) {
     stageEvidence.append(makeElement("div", "evidence-label", "Measured next-token distribution"));
-    stageEvidence.append(makeElement("p", "evidence-note", "The five highest chances appear below. With sampling, the selected token can be outside the top five."));
-    renderFlow([["Adjusted scores", "penalty + filters"], ["Softmax", "normalize"], ["Next token", "probabilities"]]);
+    const settings = result.settings;
+    renderFlow([["Raw scores", "one per token"], ["Decoder settings", settings.strategy === "greedy" ? "repetition penalty" : "temperature + filters"], ["Softmax", "probabilities"]]);
+    stageEvidence.append(makeElement("p", "evidence-note", settings.strategy === "greedy"
+      ? `Repetition penalty ${settings.repetition_penalty}. Greedy decoding chooses the highest remaining score; the bars show its softmax distribution.`
+      : `Temperature ${settings.temperature} · top-k ${settings.top_k} · top-p ${settings.top_p} · repetition penalty ${settings.repetition_penalty}. The decoder samples from the resulting probabilities.`));
     step.candidates.forEach((candidate) => {
-      const row = makeElement("div", "probability evidence-probability", "");
+      const row = makeElement("div", `probability evidence-probability${candidate.token_id === step.selected_token_id ? " selected" : ""}`, "");
       const track = makeElement("span", "probability-track", "");
       const fill = makeElement("span", "probability-fill", "");
-      fill.style.width = `${Math.max(candidate.probability * 100, .7)}%`;
+      fill.style.width = `${candidate.probability * 100}%`;
       track.append(fill);
-      row.append(makeElement("span", "probability-token", visibleToken(candidate.token)), track, makeElement("span", "probability-value", percent(candidate.probability)));
+      row.append(makeElement("span", "probability-token", candidateText(candidate)), track, makeElement("span", "probability-value", percent(candidate.probability)));
       stageEvidence.append(row);
     });
+    const remainder = Math.max(0, 1 - step.candidates.reduce((sum, candidate) => sum + candidate.probability, 0));
+    stageEvidence.append(makeElement("p", "evidence-note", `Other tokens together: ${percent(remainder)}. Showing the top ${step.candidates.length}; sampling can choose a token outside this list.`));
   } else {
-    stageEvidence.append(makeElement("div", "evidence-label", "Selected by the decoder"));
-    renderFlow([["Distribution", "next-token chances"], ["Selected ID", String(step.selected_token_id)], ["Decoded piece", visibleToken(step.selected_token)]]);
-    stageEvidence.append(makeElement("div", "chosen-evidence", `${visibleToken(step.selected_token)} · ID ${step.selected_token_id}`));
+    const isEos = step.selected_token_id === architecture.eos_token_id;
+    const piece = candidateText({ token: step.selected_token, token_id: step.selected_token_id });
+    stageEvidence.append(makeElement("div", "evidence-label", result.settings.strategy === "greedy" ? "Choose the highest score" : "Sample one token"));
+    renderFlow([["Distribution", "next-token chances"], ["Selected ID", String(step.selected_token_id)], ["Decoded piece", piece]]);
+    stageEvidence.append(makeElement("div", "chosen-evidence", piece));
     stageEvidence.append(makeElement("p", "evidence-note", `Chance under these settings: ${percent(step.selected_probability)}.`));
+    const isLast = event.tokenIndex === result.steps.length - 1;
+    stageEvidence.append(makeElement("div", "vector-exit", isEos
+      ? "EOS marks the end. Generation stops here."
+      : isLast
+        ? "Append this piece to the reply. The requested token limit is reached."
+        : "Append this token to the context → run the same model again → predict the next piece."));
   }
 }
 
-function renderTokens(result, promptCount, generatedCount, activePromptIndex) {
-  tokenStream.replaceChildren();
+function renderTokenArrays(result, generatedCount) {
   promptTextArray.textContent = JSON.stringify(result.prompt_tokens.map((token) => token.text || token.piece));
   promptIdArray.textContent = JSON.stringify(result.prompt_tokens.map((token) => token.id));
   generatedTextArray.textContent = JSON.stringify(result.steps?.slice(0, generatedCount).map((step) => step.selected_token) || []);
   generatedIdArray.textContent = JSON.stringify(result.steps?.slice(0, generatedCount).map((step) => step.selected_token_id) || []);
-  result.prompt_tokens.forEach((token, index) => {
-    const state = index === activePromptIndex ? " active-token" : index < promptCount ? " seen" : "";
-    const chip = makeElement("button", `token-chip${state}`, "");
-    chip.type = "button";
-    chip.title = `Prompt piece ${index + 1}: ID ${token.id}, position ${token.position}. Click to inspect this token.`;
-    chip.append(
-      makeElement("span", "token-position", String(token.position).padStart(2, "0")),
-      makeElement("span", "token-piece", visibleToken(token.text || token.piece)),
-      makeElement("span", "token-id", `ID ${token.id}`),
-    );
-    chip.addEventListener("click", () => {
-      pauseTrace();
-      moveTo(index);
-    });
-    tokenStream.append(chip);
-  });
-  if (generatedCount) tokenStream.append(makeElement("div", "token-divider", "GENERATED NEXT"));
-  result.steps?.slice(0, generatedCount).forEach((step, index) => {
-    const chip = makeElement("div", `token-chip generated${index === generatedCount - 1 ? " active-token" : ""}`, "");
-    chip.title = `Generated token ID ${step.selected_token_id}`;
-    chip.append(
-      makeElement("span", "token-position", String(index + 1).padStart(2, "0")),
-      makeElement("span", "token-piece", visibleToken(step.selected_token)),
-      makeElement("span", "token-id", `ID ${step.selected_token_id}`),
-    );
-    tokenStream.append(chip);
-  });
   promptTokenCount.textContent = `${result.prompt_tokens.length} tokens`;
-  if (generatedCount) tokenStream.scrollTop = tokenStream.scrollHeight;
 }
 
 function renderAnswer(result, generatedCount, atEnd) {
@@ -432,17 +591,17 @@ function renderCursor() {
   const generatedCount = event.kind === "prompt"
     ? 0
     : event.tokenIndex + (event.stage === 5 ? 1 : 0);
-  activateStage(event.kind === "prompt" ? 0 : event.stage, event.kind === "generation");
+  activateStage(event.stage, event.kind === "generation" || event.stage === 1);
   renderStageEvidence(event, result);
-  renderTokens(result, promptCount, generatedCount, event.kind === "prompt" ? event.promptIndex : -1);
+  renderTokenArrays(result, generatedCount);
   renderAnswer(result, generatedCount, atEnd);
   renderLog(events, result, cursor);
   stageToken.textContent = event.kind === "generation" && event.stage === 5
     ? `“${visibleToken(result.steps[event.tokenIndex].selected_token)}”`
     : "Added to the reply";
   stepCounter.textContent = event.kind === "prompt"
-    ? `Prompt token ${promptCount} of ${result.prompt_tokens.length} · event ${cursor + 1}/${events.length}`
-    : `Prediction ${event.tokenIndex + 1}/${result.steps.length} · step ${event.stage + 1}/6 · event ${cursor + 1}/${events.length}`;
+    ? `Prompt token ${promptCount} of ${result.prompt_tokens.length} · step ${event.stage + 1}/2 · event ${cursor + 1}/${events.length}`
+    : `Prediction ${event.tokenIndex + 1}/${result.steps.length} · step ${event.stage + 1}/6${event.stage === 2 && result.steps[event.tokenIndex].layer_details?.length ? ` · layer ${(event.layerIndex || 0) + 1}/${result.steps[event.tokenIndex].layer_details.length}` : ""}`;
   const progress = Math.round((cursor + 1) / events.length * 100);
   traceProgress.setAttribute("aria-valuenow", String(progress));
   traceProgressFill.style.width = `${progress}%`;
@@ -472,18 +631,26 @@ function moveTo(index) {
   trace.cursor = index;
   renderCursor();
   if (trace.playing && index < trace.events.length - 1) {
-    traceTimer = setTimeout(() => moveTo(index + 1), {
-      fast: 170, normal: 650, slow: 1600,
-    }[playbackSpeed.value] || 650);
+    const delay = { fast: 200, normal: 850, slow: 1800 }[playbackSpeed.value] || 850;
+    traceTimer = setTimeout(() => moveTo(index + 1), trace.events[index].stage === 2 ? delay * 1.5 : delay);
   }
 }
 
 function startTrace(result, autoplay) {
   pauseTrace();
-  const events = result.prompt_tokens.map((_, promptIndex) => ({ kind: "prompt", promptIndex }));
-  result.steps?.forEach((_, tokenIndex) => {
+  const events = result.prompt_tokens.flatMap((_, promptIndex) => [
+    { kind: "prompt", promptIndex, stage: 0 },
+    { kind: "prompt", promptIndex, stage: 1 },
+  ]);
+  result.steps?.forEach((step, tokenIndex) => {
     for (let stage = 0; stage < stages.length; stage += 1) {
-      events.push({ kind: "generation", tokenIndex, stage });
+      if (stage === 2 && step.layer_details?.length) {
+        step.layer_details.forEach((_, layerIndex) => {
+          events.push({ kind: "generation", tokenIndex, stage, layerIndex });
+        });
+      } else {
+        events.push({ kind: "generation", tokenIndex, stage });
+      }
     }
   });
   trace = { result, events, cursor: 0, playing: autoplay };
@@ -554,16 +721,23 @@ replayButton.addEventListener("click", () => { if (trace) startTrace(trace.resul
 stages.forEach((stage, index) => {
   stage.addEventListener("click", () => {
     pauseTrace();
-    activateStage(index);
     if (trace) {
       const event = trace.events[trace.cursor];
-      if (event.kind === "prompt") {
-        renderStageEvidence({ ...event, stage: index }, trace.result);
-      } else {
-        renderStageEvidence({ ...event, stage: index }, trace.result);
+      const cursor = trace.events.findIndex((item) => {
+        if (event.kind === "prompt" && index < 2) {
+          return item.kind === "prompt" && item.promptIndex === event.promptIndex && item.stage === index;
+        }
+        return item.kind === "generation" && item.tokenIndex === (event.tokenIndex || 0) && item.stage === index;
+      });
+      if (cursor >= 0) {
+        moveTo(cursor);
+        return;
       }
+      renderStageEvidence({ ...event, stage: index }, trace.result);
     }
+    activateStage(index);
   });
 });
 
+new ResizeObserver(updatePipelinePosition).observe(pipeline);
 loadStatus();

@@ -65,6 +65,23 @@ class AttentionFocus:
 
 
 @dataclass(frozen=True, slots=True)
+class LayerActivation:
+    """A small measured summary of the last context token at one operation."""
+
+    name: str
+    width: int
+    norm: float
+    preview: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TransformerLayerTrace:
+    index: int
+    activations: tuple[LayerActivation, ...]
+    attention_focus: tuple[AttentionFocus, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class GenerationStep:
     index: int
     context_token_count: int
@@ -78,6 +95,7 @@ class GenerationStep:
     attention_focus: tuple[AttentionFocus, ...] = ()
     projection_input_norm: float | None = None
     context_token_ids: tuple[int, ...] = ()
+    layer_details: tuple[TransformerLayerTrace, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,7 +170,8 @@ def generate(
     embedding_preview: list[float] = []
     embedding_norm: list[float] = []
     layer_norms: list[float] = []
-    attention_focus: list[tuple[int, float]] = []
+    layer_activations: list[dict[str, LayerActivation]] = []
+    layer_attention: list[tuple[AttentionFocus, ...]] = []
     projection_input_norm: list[float] = []
     trace_handles = []
     if config.trace_top_n and hasattr(model, "embeddings") and hasattr(model, "blocks"):
@@ -164,31 +183,68 @@ def generate(
             embedding_preview.extend(float(value) for value in vector[:8].tolist())
             embedding_norm.append(float(torch.linalg.vector_norm(vector)))
 
-        def record_layer(_module: torch.nn.Module, _inputs: tuple, output: torch.Tensor) -> None:
-            layer_norms.append(float(torch.linalg.vector_norm(output[0, -1].detach().float())))
-
         trace_handles.append(model.embeddings.register_forward_hook(record_embedding))
-        trace_handles.extend(block.register_forward_hook(record_layer) for block in model.blocks)
-        if model.blocks:
+        layer_activations = [{} for _ in model.blocks]
+        layer_attention = [() for _ in model.blocks]
 
-            def record_attention(module: torch.nn.Module, inputs: tuple) -> None:
-                normalized = inputs[0][0].detach()
-                length = normalized.shape[0]
-                projected = module.qkv_projection(normalized).reshape(
-                    length, 3, module.num_heads, module.head_dim
-                )
+        def summarize(name: str, tensor: torch.Tensor) -> LayerActivation:
+            vector = tensor[0, -1].detach().float()
+            return LayerActivation(
+                name=name,
+                width=vector.numel(),
+                norm=float(torch.linalg.vector_norm(vector)),
+                preview=tuple(vector[:8].tolist()),
+            )
+
+        def activation_hook(index: int, name: str, input_name: str | None = None):
+            def capture(_module: torch.nn.Module, inputs: tuple, output: torch.Tensor) -> None:
+                if input_name:
+                    layer_activations[index][input_name] = summarize(input_name, inputs[0])
+                measured = summarize(name, output)
+                layer_activations[index][name] = measured
+                if name == "output":
+                    layer_norms.append(measured.norm)
+            return capture
+
+        def attention_hook(index: int, heads: int, head_dim: int):
+            def capture(_module: torch.nn.Module, _inputs: tuple, output: torch.Tensor) -> None:
+                # Read the actual Q/K projection. For the last query, every context
+                # position is allowed by the causal mask.
+                length = output.shape[1]
+                projected = output[0].detach().reshape(length, 3, heads, head_dim)
                 query = projected[-1, 0, 0]
                 keys = projected[:, 1, 0]
-                scores = keys @ query / math.sqrt(module.head_dim)
+                scores = keys @ query / math.sqrt(head_dim)
                 weights = torch.softmax(scores, dim=0)
                 values, positions = weights.topk(min(5, length))
-                attention_focus.extend(
-                    (int(position), float(value))
+                layer_attention[index] = tuple(
+                    AttentionFocus(
+                        position=int(position),
+                        token_id=context[int(position)],
+                        token=tokenizer.decode(
+                            [context[int(position)]], skip_special_tokens=True
+                        ),
+                        probability=float(value),
+                    )
                     for position, value in zip(positions, values, strict=True)
                 )
+            return capture
 
+        for index, block in enumerate(model.blocks):
+            for module, name, input_name in (
+                (block.attention_norm, "attention_norm", "input"),
+                (block.attention, "attention", None),
+                (block.feed_forward_norm, "feed_forward_norm", "attention_residual"),
+                (block.feed_forward, "feed_forward", None),
+                (block, "output", None),
+            ):
+                trace_handles.append(
+                    module.register_forward_hook(activation_hook(index, name, input_name))
+                )
             trace_handles.append(
-                model.blocks[-1].attention.register_forward_pre_hook(record_attention)
+                block.attention.qkv_projection.register_forward_hook(
+                    attention_hook(index, block.attention.num_heads, block.attention.head_dim)
+                )
             )
         if hasattr(model, "final_norm"):
 
@@ -206,7 +262,9 @@ def generate(
                 embedding_preview.clear()
                 embedding_norm.clear()
                 layer_norms.clear()
-                attention_focus.clear()
+                for index in range(len(layer_activations)):
+                    layer_activations[index].clear()
+                    layer_attention[index] = ()
                 projection_input_norm.clear()
                 context = token_ids[-model.config.context_length :]
                 inputs = torch.tensor([context], dtype=torch.long, device=device)
@@ -258,16 +316,14 @@ def generate(
                             embedding_preview=tuple(embedding_preview),
                             embedding_norm=embedding_norm[0] if embedding_norm else None,
                             layer_norms=tuple(layer_norms),
-                            attention_focus=tuple(
-                                AttentionFocus(
-                                    position=position,
-                                    token_id=context[position],
-                                    token=tokenizer.decode(
-                                        [context[position]], skip_special_tokens=True
-                                    ),
-                                    probability=probability,
+                            attention_focus=layer_attention[-1] if layer_attention else (),
+                            layer_details=tuple(
+                                TransformerLayerTrace(
+                                    index=index + 1,
+                                    activations=tuple(activations.values()),
+                                    attention_focus=layer_attention[index],
                                 )
-                                for position, probability in attention_focus
+                                for index, activations in enumerate(layer_activations)
                             ),
                             projection_input_norm=(
                                 projection_input_norm[0] if projection_input_norm else None

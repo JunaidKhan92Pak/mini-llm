@@ -41,6 +41,7 @@ class JeePeeTeeWebApp:
             "global_step": self.payload.get("global_step"),
             "parameters": self.model.parameter_count(),
             "vocabulary_size": self.tokenizer.vocab_size,
+            "eos_token_id": self.tokenizer.eos_token_id,
             "context_length": self.model.config.context_length,
             "layers": self.model.config.num_layers,
             "heads": self.model.config.num_heads,
@@ -63,9 +64,14 @@ class JeePeeTeeWebApp:
             was_training = self.model.training
             self.model.eval()
             try:
-                prompt_vectors = self.model.embeddings(
-                    torch.tensor([prompt_ids], dtype=torch.long, device=self.device)
-                )[0].detach().float().cpu()
+                token_ids = torch.tensor([prompt_ids], dtype=torch.long, device=self.device)
+                positions = torch.arange(len(prompt_ids), device=self.device)
+                token_vectors = self.model.embeddings.token_embedding(token_ids)[0]
+                position_vectors = self.model.embeddings.position_embedding(positions)
+                prompt_vectors = self.model.embeddings(token_ids)[0]
+                token_vectors = token_vectors.detach().float().cpu()
+                position_vectors = position_vectors.detach().float().cpu()
+                prompt_vectors = prompt_vectors.detach().float().cpu()
             finally:
                 self.model.train(was_training)
         token_norms = torch.linalg.vector_norm(prompt_vectors, dim=-1).tolist()
@@ -76,6 +82,9 @@ class JeePeeTeeWebApp:
                 "text": self.tokenizer.decode([token_id], skip_special_tokens=True),
                 "position": position,
                 "embedding_preview": prompt_vectors[position, :8].tolist(),
+                "token_embedding_preview": token_vectors[position, :8].tolist(),
+                "position_embedding_preview": position_vectors[position, :8].tolist(),
+                "embedding_vector": prompt_vectors[position].tolist(),
                 "embedding_norm": token_norms[position],
             }
             for position, token_id in enumerate(prompt_ids)
@@ -117,6 +126,21 @@ class JeePeeTeeWebApp:
         for step in result.steps:
             generated_prefix.append(step.selected_token_id)
             data = asdict(step)
+            last_id = step.context_token_ids[-1]
+            position = step.context_token_count - 1
+            with torch.no_grad():
+                token_vector = (
+                    self.model.embeddings.token_embedding.weight[last_id].detach().float().cpu()
+                )
+                position_vector = (
+                    self.model.embeddings.position_embedding.weight[position].detach().float().cpu()
+                )
+            data["embedding_components"] = {
+                "position": position,
+                "token_embedding_preview": token_vector[:8].tolist(),
+                "position_embedding_preview": position_vector[:8].tolist(),
+                "embedding_vector": (token_vector + position_vector).tolist(),
+            }
             data["partial_completion"] = self.tokenizer.decode(
                 generated_prefix, skip_special_tokens=True
             ).strip()

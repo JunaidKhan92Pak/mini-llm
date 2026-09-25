@@ -60,18 +60,24 @@ For deterministic output:
 This starts a local page at `http://127.0.0.1:8765` and opens it in the browser. The
 page lets you inspect prompt BPE pieces, IDs, positions, and measured token-plus-position
 embeddings before generating. During generation it shows context IDs, the last token's
-output magnitude after each Transformer layer, five attention links from one head of the
-final layer, raw vocabulary scores, and next-token probabilities. The full-width prompt
+output magnitude after each Transformer layer, raw vocabulary scores, and next-token
+probabilities. Inside the Transformer step, choose a layer or use playback to follow
+normalization, attention, residual additions, and the feed-forward network. The values
+are measured from that layer; expandable details show its head-1 attention links and
+vector samples. The full-width prompt
 and prediction section sits above the visualizer. Below it are vertical prediction steps,
 selected-step details, and token arrays. The clickable event log spans the full width at
 the bottom. Prompt and generated token pieces each have a readable text array and a matching
-ordered ID array; individual BPE pieces also appear below them. On mobile, the sections
+ordered ID array. Inside the Tokens and IDs step, a position/piece/ID table maps the
+actual input to its numeric model input; select a prompt piece to inspect its embedding.
+On mobile, the sections
 stack in the same order.
 The selected step shows a short model-operation formula, an input/process/output summary,
 and measured trace values; the formula is a teaching aid rather than an extra model operation.
 Previous/next controls and slow/normal/fast playback let you narrate each step while the
 reply builds one token at a time. The vertical path highlights the active stage, marks
-completed stages for the current prediction, and scrolls to keep playback visible.
+completed stages for the current prediction, and displays all six stages without an
+internal scrollbar.
 Use **Inspect prompt** to study tokenization without
 running the full model, or **Generate** for the complete inference trace.
 The depth effects are an educational representation of the computation order, not a

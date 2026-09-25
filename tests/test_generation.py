@@ -183,16 +183,47 @@ def test_generation_trace_captures_embedding_and_each_transformer_layer(
     assert len(step.attention_focus) == min(5, step.context_token_count)
     assert step.projection_input_norm is not None and step.projection_input_norm > 0
     assert step.context_token_ids == tuple(tokenizer.encode("hello", add_bos=True))
+    assert len(step.layer_details) == model.config.num_layers
     assert not model.embeddings._forward_hooks
     assert all(not block._forward_hooks for block in model.blocks)
     assert not model.blocks[-1].attention._forward_pre_hooks
     assert not model.final_norm._forward_hooks
+    assert all(not module._forward_hooks for module in model.modules())
     assert model.training
 
     model.eval()
     context = torch.tensor([step.context_token_ids], dtype=torch.long)
     with torch.no_grad():
         hidden = model.embeddings(context)
+        traced_hidden = hidden
+        for index, (block, detail) in enumerate(
+            zip(model.blocks, step.layer_details, strict=True)
+        ):
+            normalized_input = block.attention_norm(traced_hidden)
+            attention_update = block.attention(normalized_input)
+            residual = traced_hidden + attention_update
+            normalized_residual = block.feed_forward_norm(residual)
+            feed_forward_update = block.feed_forward(normalized_residual)
+            output = residual + feed_forward_update
+            expected_vectors = {
+                "input": traced_hidden,
+                "attention_norm": normalized_input,
+                "attention": attention_update,
+                "attention_residual": residual,
+                "feed_forward_norm": normalized_residual,
+                "feed_forward": feed_forward_update,
+                "output": output,
+            }
+            assert detail.index == index + 1
+            assert len(detail.activations) == len(expected_vectors)
+            for activation in detail.activations:
+                vector = expected_vectors[activation.name][0, -1]
+                assert activation.width == vector.numel()
+                assert activation.norm == pytest.approx(float(torch.linalg.vector_norm(vector)))
+                torch.testing.assert_close(torch.tensor(activation.preview), vector[:8])
+            assert detail.activations[-1].norm == step.layer_norms[index]
+            assert len(detail.attention_focus) == min(5, len(step.context_token_ids))
+            traced_hidden = output
         for block in model.blocks[:-1]:
             hidden = block(hidden)
         attention = model.blocks[-1].attention
@@ -209,6 +240,10 @@ def test_generation_trace_captures_embedding_and_each_transformer_layer(
         assert focus.token_id == step.context_token_ids[focus.position]
     for candidate in step.candidates:
         assert candidate.raw_logit == pytest.approx(float(logits[candidate.token_id]))
+    untraced = generate(
+        model, tokenizer, "hello", GenerationConfig(max_new_tokens=1, strategy="greedy")
+    )
+    assert untraced.generated_token_ids == result.generated_token_ids
 
 
 @pytest.mark.parametrize(
